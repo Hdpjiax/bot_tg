@@ -1,6 +1,6 @@
 import logging
-import sqlite3
 import os
+from supabase import create_client, Client
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -24,6 +24,12 @@ from telegram.ext import (
 BOT_TOKEN = "8509475938:AAEYZ13VLaoFicGMTV5_LmATUyPAM8sSD7c"
 ADMIN_CHAT_ID = 7721918273
 
+# REEMPLAZA ESTO CON TUS DATOS DE SUPABASE
+SUPABASE_URL = "https://tu_proyecto.supabase.co"
+SUPABASE_KEY = "tu_anon_key_aqui"
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 CUENTA_BANCARIA = (
     "🏦 *DATOS DE PAGO (Toca para copiar)*\n\n"
     "Banco: `BBVA`\n"
@@ -44,26 +50,8 @@ TEXTO_INSTRUCCIONES_QR = (
 logging.basicConfig(level=logging.INFO)
 
 # =========================
-# 🗄️ BASE DE DATOS
+# 🧠 MEMORIA VOLÁTIL
 # =========================
-def init_db():
-    conn = sqlite3.connect('vuelos.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cotizaciones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            username TEXT,
-            monto TEXT,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            estado TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
 usuarios = {}     
 last_text = {}    
 albums = {}       
@@ -79,17 +67,6 @@ def get_user(uid):
 def log(uid, texto):
     user_data = get_user(uid)
     user_data["historial"].append(texto)
-
-async def descargar_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != ADMIN_CHAT_ID: return
-    try:
-        if os.path.exists('vuelos.db'):
-            with open('vuelos.db', 'rb') as db_file:
-                await context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=db_file, filename="reporte_vuelos.db")
-        else:
-            await update.message.reply_text("⚠️ No hay base de datos aún.")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {e}")
 
 # =========================
 # 🚀 COMANDO START
@@ -116,8 +93,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💰 Cotizar", callback_data="cotizar")],
         [InlineKeyboardButton("✅ Confirmar Pago", callback_data="confirmar_pago")],
         [InlineKeyboardButton("📤 Enviar QR", callback_data="reenviar_qr")],
-        [InlineKeyboardButton("📜 Historial", callback_data="historial")],
-        [InlineKeyboardButton("📊 Descargar DB", callback_data="descargar_db")]
+        [InlineKeyboardButton("📜 Historial", callback_data="historial")]
     ]
     await update.message.reply_text("🛠 **Panel Admin**", reply_markup=InlineKeyboardMarkup(botones))
 
@@ -129,17 +105,12 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     await query.answer()
 
-    if data == "descargar_db":
-        await descargar_db(update, context)
-        return
-
     if data.startswith("conf_"):
         target_uid = int(data.split("_")[1])
-        conn = sqlite3.connect('vuelos.db')
-        cursor = conn.cursor()
-        cursor.execute("UPDATE cotizaciones SET estado = 'Pagado' WHERE user_id = ? AND estado = 'Pendiente'", (target_uid,))
-        conn.commit()
-        conn.close()
+        
+        # ACTUALIZAR EN SUPABASE
+        supabase.table("cotizaciones").update({"estado": "Pagado"}).eq("user_id", target_uid).eq("estado", "Pendiente").execute()
+
         await context.bot.send_message(target_uid, "✅ **¡Pago recibido con éxito!**\nEstamos procesando tus QR.", parse_mode="Markdown")
         await query.edit_message_caption(caption=f"{query.message.caption}\n\n🟢 **PAGO CONFIRMADO**", reply_markup=None)
         return
@@ -186,26 +157,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if accion == "cotizar":
             monto = partes[1]
             get_user(target_uid)["estado"] = "esperando_pago"
-            conn = sqlite3.connect('vuelos.db')
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO cotizaciones (user_id, username, monto, estado) VALUES (?, ?, ?, ?)", (target_uid, "User", monto, "Pendiente"))
-            conn.commit()
-            conn.close()
+            
+            # GUARDAR EN SUPABASE
+            supabase.table("cotizaciones").insert({
+                "user_id": target_uid, 
+                "username": "User", 
+                "monto": monto, 
+                "estado": "Pendiente"
+            }).execute()
+
             await context.bot.send_message(target_uid, f"✈️ **Cotización Lista**\nTotal: **${monto} MXN**\n\n{CUENTA_BANCARIA}", parse_mode="Markdown")
             await update.message.reply_text(f"✅ Cotización enviada a {target_uid}")
             
         elif accion == "reenviar_qr":
-            if not albums:
-                await update.message.reply_text("⚠️ No hay QRs cargados.")
-                return
+            if not albums: return
             mid = list(albums.keys())[-1]
             fotos = albums.pop(mid)
-            # Se envían las fotos y al final el mensaje de instrucciones
             media = [InputMediaPhoto(f, caption="🎫 **Tus pases de abordar**" if i == 0 else "") for i, f in enumerate(fotos)]
             await context.bot.send_media_group(chat_id=target_uid, media=media)
-            # MENSAJE AUTOMÁTICO DE SEGURIDAD
             await context.bot.send_message(chat_id=target_uid, text=TEXTO_INSTRUCCIONES_QR, parse_mode="Markdown")
-            await update.message.reply_text(f"✅ QR e instrucciones enviadas a {target_uid}")
+            await update.message.reply_text(f"✅ QR enviado a {target_uid}")
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {e}")
@@ -235,7 +206,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_photo(ADMIN_CHAT_ID, file_id, caption=f"{tipo}\n👤 @{msg.from_user.username}\n🆔 `{uid}`\n📝 {texto_f}", reply_markup=markup, parse_mode="Markdown")
         await msg.reply_text("✅ Recibido. Procesando...")
     else:
-        # Si el admin envía imágenes, se guardan en el álbum para luego enviarlas como QR
         if msg.media_group_id: albums.setdefault(msg.media_group_id, []).append(file_id)
         else: albums[f"s_{msg.message_id}"] = [file_id]
 
