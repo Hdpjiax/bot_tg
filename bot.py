@@ -72,7 +72,32 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     udata = context.user_data
 
-    if texto == "📝 Datos de vuelo":
+    # --- BOTÓN MIS PEDIDOS (CORREGIDO) ---
+    if texto == "📜 Mis Pedidos":
+        # Filtramos estrictamente por el ID del usuario que presiona el botón
+        res = supabase.table("cotizaciones").select("*").eq("user_id", str(uid)).order("created_at", desc=True).execute()
+        
+        if not res.data:
+            await update.message.reply_text("❌ No tienes vuelos registrados con este ID de Telegram.")
+            return
+        
+        msj = "📜 **TUS VUELOS Y COTIZACIONES**\n\n"
+        for v in res.data:
+            msj += (f"🆔 **ID de Vuelo:** `{v['id']}`\n"
+                    f"📍 **Estatus:** {v['estado']}\n"
+                    f"📝 **Datos:** {v['pedido_completo']}\n"
+                    f"💰 **Monto:** {v.get('monto', 'Pendiente de cotizar')}\n"
+                    f"📅 **Fecha Registro:** {v['created_at'][:10]}\n"
+                    f"--------------------------\n")
+        
+        # Dividir mensaje si es muy largo
+        if len(msj) > 4000:
+            for i in range(0, len(msj), 4000):
+                await update.message.reply_text(msj[i:i+4000], parse_mode="Markdown")
+        else:
+            await update.message.reply_text(msj, parse_mode="Markdown")
+
+    elif texto == "📝 Datos de vuelo":
         udata["estado"] = "usr_esperando_datos"
         await update.message.reply_text("Escribe el Origen, Destino y Fecha de tu vuelo:")
 
@@ -87,21 +112,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("Contactar Soporte 💬", url=f"https://t.me/{SOPORTE_USER.replace('@','')}")]])
         await update.message.reply_text("Haz clic abajo para hablar con un agente:", reply_markup=btn)
 
-    elif texto == "📜 Mis Pedidos":
-        res = supabase.table("cotizaciones").select("*").eq("user_id", uid).order("created_at", desc=True).execute()
-        if not res.data:
-            await update.message.reply_text("Aún no tienes pedidos registrados.")
-            return
-        
-        msj = "📜 **TUS VUELOS REGISTRADOS**\n\n"
-        for v in res.data:
-            msj += (f"🆔 ID: `{v['id']}`\n"
-                    f"📍 Estatus: *{v['estado']}*\n"
-                    f"📝 Datos: {v['pedido_completo']}\n"
-                    f"💰 Monto: {v.get('monto', 'Pendiente')}\n"
-                    f"--------------------------\n")
-        await update.message.reply_text(msj, parse_mode="Markdown")
-
+    # --- MANEJO DE ESTADOS ---
     elif udata.get("estado") == "usr_esperando_datos":
         udata["tmp_datos"] = texto
         udata["estado"] = "usr_esperando_foto_vuelo"
@@ -121,6 +132,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ ID de vuelo no encontrado.")
 
+    # --- LÓGICA ADMIN TEXTO ---
     elif uid == ADMIN_CHAT_ID:
         if udata.get("adm_estado") == "adm_esp_id_cot":
             udata["target_id"] = texto
@@ -141,7 +153,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             udata["coleccion_fotos"] = [] 
             await update.message.reply_text(f"✅ ID `{texto}` seleccionado. Envía el álbum de QRs ahora.")
 
-# --- 6. FUNCIÓN PROCESAR ENVÍO AGRUPADO (ADMIN) ---
+# --- 6. ENVÍO DE QRs ---
 
 async def enviar_paquete_qr(context: ContextTypes.DEFAULT_TYPE, target_uid, v_id, fotos):
     instrucciones = (f"🎫 **INSTRUCCIONES DE VUELO ID: {v_id}**\n\n"
@@ -159,19 +171,19 @@ async def enviar_paquete_qr(context: ContextTypes.DEFAULT_TYPE, target_uid, v_id
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    username = f"@{update.effective_user.username}" if update.effective_user.username else "Sin User"
+    username = f"@{update.effective_user.username}" if update.effective_user.username else "SinUser"
     udata = context.user_data
     if not update.message.photo: return
     fid = update.message.photo[-1].file_id
 
     if udata.get("estado") == "usr_esperando_foto_vuelo":
         res = supabase.table("cotizaciones").insert({
-            "user_id": uid, "username": update.effective_user.username,
+            "user_id": str(uid), "username": username.replace("@",""),
             "pedido_completo": udata.get("tmp_datos"), "estado": "Esperando atención"
         }).execute()
         v_id = res.data[0]['id']
         await update.message.reply_text("✅ Se recibió su cotización. Por favor espere a que sea atendido.")
-        cap = f"🔔 **NUEVA SOLICITUD**\nID: `{v_id}`\nUser: `{username}`\nID Telegram: `{uid}`\nInfo: {udata.get('tmp_datos')}"
+        cap = f"🔔 **NUEVA SOLICITUD**\nID: `{v_id}`\nUser: @{username.replace('@','')}\nID Telegram: `{uid}`\nInfo: {udata.get('tmp_datos')}"
         await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=cap, parse_mode="Markdown")
         udata.clear()
 
@@ -180,7 +192,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         supabase.table("cotizaciones").update({"estado": "Esperando confirmación de pago"}).eq("id", v_id).execute()
         await update.message.reply_text(f"✅ Comprobante enviado para el ID `{v_id}`. En breve confirmaremos su pago.")
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar Pago ✅", callback_data=f"conf_direct_{v_id}")]])
-        cap = f"💰 **PAGO RECIBIDO**\nID Vuelo: `{v_id}`\nUser: `{username}`\nID Telegram: `{uid}`"
+        cap = f"💰 **PAGO RECIBIDO**\nID Vuelo: `{v_id}`\nUser: @{username.replace('@','')}\nID Telegram: `{uid}`"
         await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=cap, reply_markup=btn, parse_mode="Markdown")
         udata.clear()
 
@@ -192,14 +204,13 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async def programar_envio():
             await asyncio.sleep(0.8) 
             user_res = supabase.table("cotizaciones").select("user_id").eq("id", v_id).single().execute()
-            target_uid = user_res.data["user_id"]
-            await enviar_paquete_qr(context, target_uid, v_id, udata["coleccion_fotos"])
+            await enviar_paquete_qr(context, user_res.data["user_id"], v_id, udata["coleccion_fotos"])
             supabase.table("cotizaciones").update({"estado": "QR Enviados"}).eq("id", v_id).execute()
-            await context.bot.send_message(ADMIN_CHAT_ID, f"✅ QRs del ID `{v_id}` enviados en paquete.")
+            await context.bot.send_message(ADMIN_CHAT_ID, f"✅ QRs del ID `{v_id}` enviados.")
             udata.clear()
         udata["job_envio"] = asyncio.create_task(programar_envio())
 
-# --- 8. CALLBACKS ADMIN ---
+# --- 8. CALLBACKS ADMIN (HISTORIAL Y PENDIENTES CORREGIDOS) ---
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -221,36 +232,36 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Introduce el **ID del vuelo** para enviar los QRs:")
 
     elif query.data == "adm_pend":
-        # Pendientes: Fecha hoy a +5 días y estados específicos
-        inicio, fin = get_date_range_5d()
+        # Pendientes: Filtrado por estatus que requieren atención inmediata
         res = supabase.table("cotizaciones").select("*")\
             .filter("estado", "in", '("Esperando atención", "Cotizado", "Esperando confirmación de pago", "Pago Confirmado")')\
-            .execute()
+            .order("username", asc=True).execute()
         
         if not res.data:
-            await query.message.reply_text("No hay vuelos pendientes en los próximos 5 días.")
+            await query.message.reply_text("✅ No hay vuelos pendientes actualmente.")
             return
 
-        # Agrupar por username
+        msj = "📊 **VUELOS PENDIENTES DE GESTIÓN**\n\n"
         agrupados = {}
         for v in res.data:
             uname = v['username'] or "SinUser"
             if uname not in agrupados: agrupados[uname] = []
             agrupados[uname].append(v)
         
-        msj = "⏳ **VUELOS PENDIENTES (Próximos 5 días)**\n\n"
         for user, vuelos in agrupados.items():
             msj += f"👤 **Usuario: @{user}**\n"
             for v in vuelos:
                 msj += (f"  🆔 ID: `{v['id']}`\n"
                         f"  📍 Estatus: {v['estado']}\n"
                         f"  📝 Info: {v['pedido_completo']}\n"
-                        f"  💰 Monto: {v.get('monto', 'Pendiente')}\n\n")
+                        f"  💰 Monto: {v.get('monto', 'Pte')}\n\n")
             msj += "----------\n"
         await query.message.reply_text(msj, parse_mode="Markdown")
 
     elif query.data == "adm_his":
+        # Historial: Trae absolutamente todos los vuelos registrados
         res = supabase.table("cotizaciones").select("*").order("username", asc=True).execute()
+        
         if not res.data:
             await query.message.reply_text("Historial vacío.")
             return
@@ -261,22 +272,23 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if uname not in agrupados: agrupados[uname] = []
             agrupados[uname].append(v)
 
-        msj = "📜 **HISTORIAL TOTAL DE VUELOS**\n\n"
+        msj_total = "📜 **HISTORIAL COMPLETO AGRUPADO POR USER**\n\n"
         for user, vuelos in agrupados.items():
-            msj += f"👤 **Usuario: @{user}**\n"
+            msj_total += f"👤 **Usuario: @{user}**\n"
             for v in vuelos:
-                msj += (f"  🆔 ID: `{v['id']}`\n"
+                msj_total += (f"  🆔 ID: `{v['id']}`\n"
                         f"  📍 Estatus: {v['estado']}\n"
                         f"  📝 Info: {v['pedido_completo']}\n"
-                        f"  💰 Monto: {v.get('monto', '-')}\n\n")
-            msj += "----------\n"
-        
-        # Particionar mensaje si es muy largo
-        if len(msj) > 4000:
-            for i in range(0, len(msj), 4000):
-                await query.message.reply_text(msj[i:i+4000], parse_mode="Markdown")
+                        f"  💰 Monto: {v.get('monto', '-')}\n"
+                        f"  📅 Creado: {v['created_at'][:10]}\n\n")
+            msj_total += "━━━━━━━━━━━━━━\n"
+
+        # Dividir mensajes por el límite de caracteres de Telegram
+        if len(msj_total) > 4000:
+            for i in range(0, len(msj_total), 4000):
+                await query.message.reply_text(msj_total[i:i+4000], parse_mode="Markdown")
         else:
-            await query.message.reply_text(msj, parse_mode="Markdown")
+            await query.message.reply_text(msj_total, parse_mode="Markdown")
 
 # --- 9. ARRANQUE ---
 
