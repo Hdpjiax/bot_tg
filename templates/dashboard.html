@@ -2,136 +2,114 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Vuelos Pro | Elite Management Suite</title>
+    <title>Vuelos Pro | Suite Elite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-        body { background: #020602; color: #f0fdf4; font-family: 'Inter', sans-serif; }
+        body { background: #030803; color: #f0fdf4; font-family: 'Inter', sans-serif; }
         .glass { background: rgba(10, 25, 10, 0.7); backdrop-filter: blur(15px); border: 1px solid rgba(34, 197, 94, 0.1); }
-        
-        /* Uniformidad de los Badges de Estado */
+        /* Uniformidad de Estados */
         .status-badge { 
-            width: 190px; 
+            width: 180px; /* Tamaño fijo para uniformidad */
             text-align: center;
             display: inline-block;
             font-size: 11px;
             font-weight: 900;
-            padding: 10px 0;
-            border-radius: 8px;
+            padding: 8px 0;
+            border-radius: 6px;
             letter-spacing: 1px;
             text-transform: uppercase;
         }
-
-        .sidebar-item { transition: all 0.2s; border-left: 4px solid transparent; }
-        .sidebar-item:hover { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; }
-        .active-link { background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10b981; color: #10b981; }
-        
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        .btn-action { transition: all 0.3s; font-weight: 700; font-size: 11px; }
+        .btn-action:hover { transform: scale(1.05); }
     </style>
 </head>
-<body class="flex min-h-screen overflow-hidden">
+<body class="flex min-h-screen">
 
-    <aside class="w-72 glass border-r border-emerald-500/10 flex flex-col p-6 overflow-y-auto">
-        <div class="mb-10">
-            <h1 class="text-2xl font-black text-emerald-500 italic tracking-tighter">VUELOS<span class="text-white">PRO</span></h1>
-            <p class="text-[10px] text-emerald-500/50 font-bold uppercase tracking-widest mt-1">Panel Administrativo</p>
-        </div>
-        
-        <nav class="flex-1 space-y-2">
-            <a href="/dashboard" class="sidebar-item flex items-center p-4 rounded-xl {{ 'active-link' if seccion == 'stats' }}">
-                <i class="fas fa-th-large w-6"></i> General / Estadísticas
+    <aside class="w-72 glass border-r border-emerald-500/10 flex flex-col p-6">
+        <h1 class="text-2xl font-black text-emerald-500 mb-10 italic">VUELOS<span class="text-white">PRO</span></h1>
+        <nav class="space-y-4">
+            <a href="/dashboard" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10">
+                <span><i class="fas fa-home mr-3"></i> General</span>
             </a>
-            <div class="text-[10px] text-emerald-500/40 font-black px-4 mt-8 mb-2 uppercase tracking-widest">Operaciones</div>
-            <a href="/dashboard/seccion/por_cotizar" class="sidebar-item flex items-center p-4 rounded-xl">
-                <i class="fas fa-calculator w-6 text-amber-500"></i> Por Cotizar
+            <a href="/dashboard/seccion/confirmar_pago" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10">
+                <span><i class="fas fa-money-bill-wave mr-3"></i> Validar Pagos</span>
+                <span class="bg-amber-500 text-black text-[10px] px-2 rounded-full">{{ validar_pago }}</span>
             </a>
-            <a href="/dashboard/seccion/confirmar_pago" class="sidebar-item flex items-center p-4 rounded-xl">
-                <i class="fas fa-receipt w-6 text-blue-400"></i> Validar Pagos
-            </a>
-            <a href="/dashboard/seccion/por_enviar_qr" class="sidebar-item flex items-center p-4 rounded-xl">
-                <i class="fas fa-qrcode w-6 text-emerald-400"></i> Por Enviar QR
+            <a href="/dashboard/seccion/por_enviar_qr" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10 text-emerald-400">
+                <span><i class="fas fa-qrcode mr-3"></i> Por Enviar QR</span>
+                <span class="bg-emerald-500 text-black text-[10px] px-2 rounded-full">{{ por_enviar_qr }}</span>
             </a>
         </nav>
-
-        <div class="mt-auto p-4 glass rounded-2xl text-center border-emerald-500/20">
-            <p class="text-[10px] opacity-50 uppercase mb-1">Caja Confirmada</p>
-            <p class="text-xl font-black text-emerald-500">${{ "{:,.2f}".format(total) }}</p>
-        </div>
     </aside>
 
-    <main class="flex-1 p-10 overflow-y-auto">
-
-        <header class="flex justify-between items-center mb-10">
-            <div>
-                <h2 class="text-3xl font-black text-white">{{ titulo or "RESUMEN GENERAL" }}</h2>
-                <p class="text-emerald-500/60 text-sm font-medium">Gestiona y monitorea todos tus despachos en tiempo real.</p>
+    <main class="flex-1 p-8">
+        <div class="grid grid-cols-3 gap-6 mb-8">
+            <div class="glass p-6 rounded-2xl border-l-4 border-emerald-500">
+                <p class="text-xs text-emerald-500 uppercase font-bold mb-1">Caja Total</p>
+                <p class="text-3xl font-black">${{ "{:,.2f}".format(total) }}</p>
             </div>
-            <div class="flex gap-4">
-                <div class="text-right">
-                    <p class="text-[10px] font-bold opacity-40 uppercase">Pendientes Validar</p>
-                    <p class="text-lg font-black text-amber-500">{{ validar_pago }}</p>
-                </div>
+            <div class="glass p-6 rounded-2xl border-l-4 border-amber-500">
+                <p class="text-xs text-amber-500 uppercase font-bold mb-1">Próximas Salidas (48h)</p>
+                <p class="text-3xl font-black">Revisar Lista</p>
             </div>
-        </header>
+        </div>
 
-        <div class="glass rounded-[2.5rem] overflow-hidden shadow-2xl">
+        <div class="glass rounded-3xl overflow-hidden shadow-2xl">
             <table class="w-full text-left border-collapse">
-                <thead class="bg-emerald-500/5 text-[10px] font-bold uppercase tracking-widest text-emerald-500/80">
-                    <tr>
-                        <th class="p-6">ID / Pasajero</th>
-                        <th class="p-6">Información del Vuelo (Itinerario)</th>
-                        <th class="p-6">Monto</th>
-                        <th class="p-6 text-center">Estado Actual</th>
-                        <th class="p-6 text-center">Acciones de Gestión</th>
+                <thead class="bg-emerald-500/5">
+                    <tr class="text-[10px] uppercase text-emerald-500 font-bold tracking-widest">
+                        <th class="p-5">ID / Pasajero</th>
+                        <th class="p-5 w-1/3">Itinerario y Detalles</th>
+                        <th class="p-5">Monto</th>
+                        <th class="p-5 text-center">Estado del Vuelo</th>
+                        <th class="p-5 text-center">Gestión Rápida</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     {% for v in vuelos %}
-                    <tr class="hover:bg-white/[0.02] transition-all group">
-                        <td class="p-6">
-                            <div class="text-emerald-500 font-black text-2xl group-hover:scale-110 transition-transform origin-left">#{{ v.id }}</div>
-                            <a href="/dashboard/usuario/{{ v.username }}" class="text-xs font-bold opacity-40 hover:opacity-100 hover:text-emerald-400">@{{ v.username or 'Anónimo' }}</a>
+                    <tr class="hover:bg-white/[0.02]">
+                        <td class="p-5">
+                            <span class="text-emerald-500 font-black text-xl">#{{ v.id }}</span><br>
+                            <span class="text-xs opacity-50">@{{ v.username }}</span>
                         </td>
-                        <td class="p-6">
-                            <p class="text-lg font-semibold text-white/90 leading-snug">{{ v.pedido_completo }}</p>
-                            <p class="text-[10px] mt-1 font-bold text-emerald-500/40 uppercase tracking-tighter">Ordenado por fecha de salida</p>
+                        <td class="p-5 text-lg font-medium leading-tight">
+                            {{ v.pedido_completo }}
                         </td>
-                        <td class="p-6">
-                            <div class="text-2xl font-black text-white">${{ v.monto or '0' }}</div>
+                        <td class="p-5 text-2xl font-black text-white">
+                            ${{ v.monto or '0' }}
                         </td>
-                        <td class="p-6 text-center">
+                        <td class="p-5 text-center">
                             <span class="status-badge 
-                                {% if 'atención' in v.estado %} bg-amber-500/10 text-amber-500 border border-amber-500/30
-                                {% elif 'Confirmado' in v.estado %} bg-emerald-500/10 text-emerald-400 border border-emerald-500/30
-                                {% elif 'Cotizado' in v.estado %} bg-blue-500/10 text-blue-400 border border-blue-500/30
+                                {% if 'atención' in v.estado %} bg-amber-500/10 text-amber-500 border border-amber-500/40
+                                {% elif 'Confirmado' in v.estado %} bg-emerald-500/10 text-emerald-400 border border-emerald-500/40
+                                {% elif 'Cotizado' in v.estado %} bg-blue-500/10 text-blue-400 border border-blue-500/40
                                 {% else %} bg-white/5 text-white/40 border border-white/10 {% endif %}">
                                 {{ v.estado }}
                             </span>
                         </td>
-                        <td class="p-6">
-                            <div class="flex flex-col items-center gap-2">
+                        <td class="p-5">
+                            <div class="flex flex-col gap-2 items-center">
                                 {% if v.estado == 'Esperando atención' %}
-                                    <form action="/accion/web_cotizar" method="POST" class="flex gap-2">
+                                    <form action="/accion/web_cotizar" method="POST" class="flex gap-1">
                                         <input type="hidden" name="v_id" value="{{ v.id }}">
-                                        <input type="text" name="monto" placeholder="$$$" class="w-20 bg-black/50 border border-emerald-500/30 rounded-lg px-2 text-sm text-white focus:border-emerald-500 outline-none">
-                                        <button type="submit" class="bg-emerald-500 text-black font-black text-[10px] px-4 py-2 rounded-lg hover:bg-white">COTIZAR</button>
+                                        <input type="text" name="monto" placeholder="$" class="w-16 bg-black border border-emerald-500/30 rounded p-1 text-xs text-white">
+                                        <button type="submit" class="btn-action bg-emerald-500 text-black px-3 py-1 rounded shadow-lg shadow-emerald-500/20">COTIZAR</button>
                                     </form>
                                 {% endif %}
 
                                 {% if v.estado == 'Pago Confirmado' %}
-                                    <button onclick="abrirModal('{{ v.id }}')" class="w-full bg-white text-black font-black text-[10px] px-4 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-400 transition">
-                                        <i class="fas fa-upload"></i> ENVIAR QR / BOLETOS
+                                    <button onclick="alert('Funcionalidad: El bot pedirá los QRs para el ID {{v.id}}')" class="btn-action bg-white text-black px-6 py-2 rounded flex items-center gap-2">
+                                        <i class="fas fa-upload text-[10px]"></i> ENVIAR QR
                                     </button>
                                 {% endif %}
 
-                                {% if 'confirmación' in v.estado.lower() %}
-                                    <a href="/accion/web_confirmar/{{ v.id }}" class="w-full bg-blue-600 text-white font-black text-[10px] px-4 py-3 rounded-xl text-center hover:bg-blue-400 transition">VALIDAR COMPROBANTE</a>
+                                {% if 'confirmación' in v.estado %}
+                                    <a href="/accion/web_confirmar/{{ v.id }}" class="btn-action bg-blue-600 text-white px-6 py-2 rounded">VALIDAR PAGO</a>
                                 {% endif %}
 
-                                <a href="/accion/eliminar/{{ v.id }}" onclick="return confirm('¿Eliminar este registro permanentemente?')" class="text-red-500/30 hover:text-red-500 text-[10px] font-bold mt-2 uppercase tracking-widest">
-                                    <i class="fas fa-trash-alt mr-1"></i> Borrar Registro
+                                <a href="/accion/eliminar/{{ v.id }}" onclick="return confirm('¿Eliminar registro?')" class="text-red-500/40 hover:text-red-500 text-[10px] mt-2">
+                                    <i class="fas fa-trash-alt mr-1"></i> BORRAR REGISTRO
                                 </a>
                             </div>
                         </td>
@@ -141,88 +119,5 @@
             </table>
         </div>
     </main>
-
-    <div id="modalQR" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-        <div class="glass max-w-lg w-full p-10 rounded-[3rem] border border-emerald-500/30 shadow-[0_0_50px_rgba(16,185,129,0.1)]">
-            <div class="flex justify-between items-center mb-8">
-                <h2 class="text-2xl font-black text-emerald-500 italic">DESPACHO DE BOLETOS <span id="displayID" class="text-white"></span></h2>
-                <button onclick="cerrarModal()" class="text-white/30 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
-            </div>
-            
-            <form id="uploadForm" class="space-y-6">
-                <input type="hidden" name="v_id" id="formID">
-                
-                <div id="dropZone" class="border-2 border-dashed border-emerald-500/20 rounded-[2rem] p-12 text-center hover:border-emerald-500/50 transition cursor-pointer bg-emerald-500/5 group">
-                    <div class="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition">
-                        <i class="fas fa-cloud-upload-alt text-3xl text-emerald-500"></i>
-                    </div>
-                    <p class="text-base font-bold text-white/80">Selecciona o arrastra los QRs</p>
-                    <p class="text-xs opacity-40 mt-1 uppercase tracking-widest font-bold">Formatos aceptados: JPG, PNG</p>
-                    <input type="file" name="fotos" id="fileInput" multiple class="hidden" accept="image/*">
-                </div>
-
-                <div id="fileList" class="text-[11px] font-bold text-emerald-400 space-y-2 max-h-40 overflow-y-auto custom-scroll px-2"></div>
-
-                <button type="submit" id="btnEnviar" class="w-full bg-emerald-500 text-black font-black py-5 rounded-2xl hover:bg-white transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3">
-                    <i class="fas fa-paper-plane"></i> ENVIAR AL CLIENTE POR TELEGRAM
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        const modal = document.getElementById('modalQR');
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-
-        function abrirModal(id) {
-            document.getElementById('formID').value = id;
-            document.getElementById('displayID').innerText = "#" + id;
-            modal.classList.remove('hidden');
-        }
-
-        function cerrarModal() {
-            modal.classList.add('hidden');
-            document.getElementById('uploadForm').reset();
-            document.getElementById('fileList').innerHTML = '';
-        }
-
-        dropZone.onclick = () => fileInput.click();
-
-        fileInput.onchange = (e) => {
-            const list = document.getElementById('fileList');
-            list.innerHTML = "";
-            Array.from(e.target.files).forEach(f => {
-                list.innerHTML += `<div class="bg-white/5 p-2 rounded-lg border border-white/10 flex items-center"><i class="fas fa-image mr-3"></i>${f.name}</div>`;
-            });
-        }
-
-        document.getElementById('uploadForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('btnEnviar');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> PROCESANDO ENVÍO...';
-            btn.disabled = true;
-
-            const formData = new FormData(e.target);
-            try {
-                const res = await fetch('/accion/enviar_qr_masivo', { method: 'POST', body: formData });
-                const data = await res.json();
-
-                if(data.status === 'success') {
-                    alert("✅ ¡Boletos y QRs enviados exitosamente al usuario!");
-                    location.reload();
-                } else {
-                    alert("❌ Error: " + data.message);
-                    btn.disabled = false;
-                    btn.innerHTML = originalText;
-                }
-            } catch (err) {
-                alert("❌ Error crítico en el servidor.");
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-        }
-    </script>
 </body>
 </html>
