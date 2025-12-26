@@ -1,12 +1,13 @@
 import logging
 import os
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from flask import Flask
 from supabase import create_client, Client
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, KeyboardButton
+    ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 )
 from telegram.ext import (
     ApplicationBuilder, ContextTypes, CommandHandler,
@@ -27,7 +28,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 7721918273 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SOPORTE_USER = "@TuUsuarioSoporte" # Cambia esto por tu user real
+SOPORTE_USER = "@TuUsuarioSoporte" 
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 logging.basicConfig(level=logging.INFO)
@@ -46,10 +47,18 @@ def get_admin_keyboard():
         [InlineKeyboardButton("💰 Cotizar Vuelo", callback_data="adm_cot"),
          InlineKeyboardButton("✅ Confirmar Pago", callback_data="adm_conf")],
         [InlineKeyboardButton("🖼️ Enviar QRs", callback_data="adm_qr"),
-         InlineKeyboardButton("📊 Ver Pendientes", callback_data="adm_pend")]
+         InlineKeyboardButton("📊 Ver Pendientes", callback_data="adm_pend")],
+        [InlineKeyboardButton("📜 Historial Total", callback_data="adm_his")]
     ])
 
-# --- 4. LÓGICA DE USUARIO ---
+# --- 4. FUNCIONES DE APOYO ---
+
+def get_date_range_5d():
+    hoy = datetime.now()
+    futuro = hoy + timedelta(days=5)
+    return hoy.strftime('%Y-%m-%d'), futuro.strftime('%Y-%m-%d')
+
+# --- 5. LÓGICA DE USUARIO ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -63,7 +72,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     udata = context.user_data
 
-    # BOTONES PRINCIPALES
     if texto == "📝 Datos de vuelo":
         udata["estado"] = "usr_esperando_datos"
         await update.message.reply_text("Escribe el Origen, Destino y Fecha de tu vuelo:")
@@ -79,14 +87,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("Contactar Soporte 💬", url=f"https://t.me/{SOPORTE_USER.replace('@','')}")]])
         await update.message.reply_text("Haz clic abajo para hablar con un agente:", reply_markup=btn)
 
-    # MANEJO DE ESTADOS (FLUJO TEXTO)
+    elif texto == "📜 Mis Pedidos":
+        res = supabase.table("cotizaciones").select("*").eq("user_id", uid).order("created_at", desc=True).execute()
+        if not res.data:
+            await update.message.reply_text("Aún no tienes pedidos registrados.")
+            return
+        
+        msj = "📜 **TUS VUELOS REGISTRADOS**\n\n"
+        for v in res.data:
+            msj += (f"🆔 ID: `{v['id']}`\n"
+                    f"📍 Estatus: *{v['estado']}*\n"
+                    f"📝 Datos: {v['pedido_completo']}\n"
+                    f"💰 Monto: {v.get('monto', 'Pendiente')}\n"
+                    f"--------------------------\n")
+        await update.message.reply_text(msj, parse_mode="Markdown")
+
     elif udata.get("estado") == "usr_esperando_datos":
         udata["tmp_datos"] = texto
         udata["estado"] = "usr_esperando_foto_vuelo"
         await update.message.reply_text("✅ Datos recibidos. Ahora envía una **imagen de referencia** del vuelo.")
 
     elif udata.get("estado") == "usr_esperando_id_pago":
-        # Buscamos el monto en la DB
         res = supabase.table("cotizaciones").select("monto").eq("id", texto).execute()
         if res.data:
             udata["pago_vuelo_id"] = texto
@@ -98,9 +119,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                    f"👉 Envía la **captura del pago** ahora.")
             await update.message.reply_text(msg, parse_mode="Markdown")
         else:
-            await update.message.reply_text("❌ ID de vuelo no encontrado. Revisa el número en 'Mis Pedidos'.")
+            await update.message.reply_text("❌ ID de vuelo no encontrado.")
 
-    # LÓGICA ADMIN (TEXTO)
     elif uid == ADMIN_CHAT_ID:
         if udata.get("adm_estado") == "adm_esp_id_cot":
             udata["target_id"] = texto
@@ -110,16 +130,32 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif udata.get("adm_estado") == "adm_esp_monto":
             v_id = udata["target_id"]
             supabase.table("cotizaciones").update({"monto": texto, "estado": "Cotizado"}).eq("id", v_id).execute()
-            # Notificar al usuario
             user_res = supabase.table("cotizaciones").select("user_id").eq("id", v_id).single().execute()
-            await context.bot.send_message(user_res.data["user_id"], f"💰 Tu vuelo ID `{v_id}` ha sido cotizado.\n**Monto:** {texto}\n\nYa puedes proceder al pago en el botón 'Enviar Pago'.")
+            await context.bot.send_message(user_res.data["user_id"], f"💰 Tu vuelo ID `{v_id}` ha sido cotizado.\n**Monto:** {texto}\n\nUsa el botón 'Enviar Pago' para finalizar.")
             await update.message.reply_text(f"✅ Cotización enviada al usuario para el ID `{v_id}`.")
             udata.clear()
 
         elif udata.get("adm_estado") == "adm_esp_id_qr":
             udata["target_id_qr"] = texto
             udata["adm_estado"] = "adm_enviando_qrs"
-            await update.message.reply_text(f"✅ Listo para enviar QRs al ID `{texto}`. Envía las fotos o álbum ahora.")
+            udata["coleccion_fotos"] = [] 
+            await update.message.reply_text(f"✅ ID `{texto}` seleccionado. Envía el álbum de QRs ahora.")
+
+# --- 6. FUNCIÓN PROCESAR ENVÍO AGRUPADO (ADMIN) ---
+
+async def enviar_paquete_qr(context: ContextTypes.DEFAULT_TYPE, target_uid, v_id, fotos):
+    instrucciones = (f"🎫 **INSTRUCCIONES DE VUELO ID: {v_id}**\n\n"
+                     "⚠️ **Instrucciones para evitar caídas:**\n"
+                     "- No agregar a la app.\n"
+                     "- No revisar en lo absoluto el vuelo, solo si se requiere se manda 2 horas antes del abordaje de que sigue en pie\n"
+                     "- En caso de caida se sacaria un vuelo en el horario siguiente ejemplo: salida 3pm se sacaria salida 5 o 6pm\n"
+                     "- Solo dejar guardada la foto de tu pase en tu galeria para llegar al aeropuerto solo a escanear")
+    await context.bot.send_message(target_uid, instrucciones)
+    media_group = [InputMediaPhoto(f) for f in fotos]
+    await context.bot.send_media_group(target_uid, media_group)
+    await context.bot.send_message(target_uid, "🎫 **¡Disfruta tu vuelo!**", parse_mode="Markdown")
+
+# --- 7. MANEJO DE MEDIA ---
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -128,7 +164,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo: return
     fid = update.message.photo[-1].file_id
 
-    # 1. USUARIO ENVÍA FOTO DE REFERENCIA (REGISTRO INICIAL)
     if udata.get("estado") == "usr_esperando_foto_vuelo":
         res = supabase.table("cotizaciones").insert({
             "user_id": uid, "username": update.effective_user.username,
@@ -136,62 +171,45 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }).execute()
         v_id = res.data[0]['id']
         await update.message.reply_text("✅ Se recibió su cotización. Por favor espere a que sea atendido.")
-        
-        # Notificar Admin
         cap = f"🔔 **NUEVA SOLICITUD**\nID: `{v_id}`\nUser: `{username}`\nID Telegram: `{uid}`\nInfo: {udata.get('tmp_datos')}"
         await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=cap, parse_mode="Markdown")
         udata.clear()
 
-    # 2. USUARIO ENVÍA COMPROBANTE DE PAGO (ACTUALIZACIÓN)
     elif udata.get("estado") == "usr_esperando_comprobante":
         v_id = udata.get("pago_vuelo_id")
         supabase.table("cotizaciones").update({"estado": "Esperando confirmación de pago"}).eq("id", v_id).execute()
         await update.message.reply_text(f"✅ Comprobante enviado para el ID `{v_id}`. En breve confirmaremos su pago.")
-        
-        # Notificar Admin con botón de confirmación automática
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar Pago ✅", callback_data=f"conf_direct_{v_id}")]])
-        cap = f"💰 **COMPROBANTE RECIBIDO**\nID Vuelo: `{v_id}`\nUser: `{username}`\nID Telegram: `{uid}`"
+        cap = f"💰 **PAGO RECIBIDO**\nID Vuelo: `{v_id}`\nUser: `{username}`\nID Telegram: `{uid}`"
         await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=cap, reply_markup=btn, parse_mode="Markdown")
         udata.clear()
 
-    # 3. ADMIN ENVÍA QRS (ENVÍO AL USUARIO + CAMBIO ESTADO)
     elif uid == ADMIN_CHAT_ID and udata.get("adm_estado") == "adm_enviando_qrs":
         v_id = udata.get("target_id_qr")
-        user_res = supabase.table("cotizaciones").select("user_id").eq("id", v_id).single().execute()
-        target_uid = user_res.data["user_id"]
+        udata["coleccion_fotos"].append(fid)
+        if "job_envio" in udata: udata["job_envio"].cancel()
 
-        # Enviar Instrucciones primero
-        instrucciones = (
-            "⚠️ **Instrucciones para evitar caídas:**\n\n"
-            "- No agregar a la app.\n"
-            "- No revisar en lo absoluto el vuelo. Validación 2h antes si se requiere.\n"
-            "- En caso de caída, se saca vuelo en horario siguiente.\n"
-            "- Solo deja la foto en tu galería para escanear."
-        )
-        await context.bot.send_message(target_uid, instrucciones)
-        
-        # Enviar el QR/Foto
-        await context.bot.send_photo(target_uid, fid, caption=f"🎫 Pase de abordar - Vuelo ID: `{v_id}`")
-        
-        # Enviar mensaje final
-        await context.bot.send_message(target_uid, "🎫 **¡Disfruta tu vuelo!**", parse_mode="Markdown")
-        
-        # Actualizar DB
-        supabase.table("cotizaciones").update({"estado": "QR Enviados"}).eq("id", v_id).execute()
-        await update.message.reply_text(f"✅ QRs enviados con éxito al usuario del ID `{v_id}`.")
+        async def programar_envio():
+            await asyncio.sleep(0.8) 
+            user_res = supabase.table("cotizaciones").select("user_id").eq("id", v_id).single().execute()
+            target_uid = user_res.data["user_id"]
+            await enviar_paquete_qr(context, target_uid, v_id, udata["coleccion_fotos"])
+            supabase.table("cotizaciones").update({"estado": "QR Enviados"}).eq("id", v_id).execute()
+            await context.bot.send_message(ADMIN_CHAT_ID, f"✅ QRs del ID `{v_id}` enviados en paquete.")
+            udata.clear()
+        udata["job_envio"] = asyncio.create_task(programar_envio())
 
-# --- 5. CALLBACKS ADMIN ---
+# --- 8. CALLBACKS ADMIN ---
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    # Confirmación de pago directa desde el botón de la foto
+    if update.effective_user.id != ADMIN_CHAT_ID: return
+
     if query.data.startswith("conf_direct_"):
         v_id = query.data.split("_")[2]
         res = supabase.table("cotizaciones").update({"estado": "Pago Confirmado"}).eq("id", v_id).execute()
-        u_id = res.data[0]['user_id']
-        await context.bot.send_message(u_id, f"✅ Tu pago para el ID `{v_id}` ha sido confirmado. Por favor espera tus QRs.")
+        await context.bot.send_message(res.data[0]['user_id'], f"✅ Tu pago para el ID `{v_id}` ha sido confirmado. En breve recibirás tus QRs.")
         await query.edit_message_caption(caption=f"✅ Pago Confirmado para ID `{v_id}`")
 
     elif query.data == "adm_cot":
@@ -202,7 +220,65 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["adm_estado"] = "adm_esp_id_qr"
         await query.message.reply_text("Introduce el **ID del vuelo** para enviar los QRs:")
 
-# --- 6. ARRANQUE ---
+    elif query.data == "adm_pend":
+        # Pendientes: Fecha hoy a +5 días y estados específicos
+        inicio, fin = get_date_range_5d()
+        res = supabase.table("cotizaciones").select("*")\
+            .filter("estado", "in", '("Esperando atención", "Cotizado", "Esperando confirmación de pago", "Pago Confirmado")')\
+            .execute()
+        
+        if not res.data:
+            await query.message.reply_text("No hay vuelos pendientes en los próximos 5 días.")
+            return
+
+        # Agrupar por username
+        agrupados = {}
+        for v in res.data:
+            uname = v['username'] or "SinUser"
+            if uname not in agrupados: agrupados[uname] = []
+            agrupados[uname].append(v)
+        
+        msj = "⏳ **VUELOS PENDIENTES (Próximos 5 días)**\n\n"
+        for user, vuelos in agrupados.items():
+            msj += f"👤 **Usuario: @{user}**\n"
+            for v in vuelos:
+                msj += (f"  🆔 ID: `{v['id']}`\n"
+                        f"  📍 Estatus: {v['estado']}\n"
+                        f"  📝 Info: {v['pedido_completo']}\n"
+                        f"  💰 Monto: {v.get('monto', 'Pendiente')}\n\n")
+            msj += "----------\n"
+        await query.message.reply_text(msj, parse_mode="Markdown")
+
+    elif query.data == "adm_his":
+        res = supabase.table("cotizaciones").select("*").order("username", asc=True).execute()
+        if not res.data:
+            await query.message.reply_text("Historial vacío.")
+            return
+
+        agrupados = {}
+        for v in res.data:
+            uname = v['username'] or "SinUser"
+            if uname not in agrupados: agrupados[uname] = []
+            agrupados[uname].append(v)
+
+        msj = "📜 **HISTORIAL TOTAL DE VUELOS**\n\n"
+        for user, vuelos in agrupados.items():
+            msj += f"👤 **Usuario: @{user}**\n"
+            for v in vuelos:
+                msj += (f"  🆔 ID: `{v['id']}`\n"
+                        f"  📍 Estatus: {v['estado']}\n"
+                        f"  📝 Info: {v['pedido_completo']}\n"
+                        f"  💰 Monto: {v.get('monto', '-')}\n\n")
+            msj += "----------\n"
+        
+        # Particionar mensaje si es muy largo
+        if len(msj) > 4000:
+            for i in range(0, len(msj), 4000):
+                await query.message.reply_text(msj[i:i+4000], parse_mode="Markdown")
+        else:
+            await query.message.reply_text(msj, parse_mode="Markdown")
+
+# --- 9. ARRANQUE ---
 
 if __name__ == "__main__":
     threading.Thread(target=run_server).start()
