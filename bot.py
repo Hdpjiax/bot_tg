@@ -107,16 +107,27 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"🔔 **NUEVA SOLICITUD**\nID: `{res.data[0]['id']}`\nInfo: {udata.get('tmp_datos')}")
             udata.clear()
 
-        # 2. Comprobante de Pago (Aplicando instrucción personalizada)
+       # 2. Comprobante de Pago
         elif udata.get("estado") == "usr_esperando_comprobante":
             v_id = udata.get("pago_id")
+            # Aplicando tu instrucción: si no hay texto, poner 'comprobante'
             caption_text = "comprobante" if not update.message.caption else update.message.caption
             
             supabase.table("cotizaciones").update({"estado": "Esperando confirmación"}).eq("id", v_id).execute()
-            await update.message.reply_text(f"✅ Comprobante de pago recibido.")
+            await update.message.reply_text(f"✅ Comprobante enviado para el ID `{v_id}`.")
             
-            btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar ✅", callback_data=f"conf_direct_{v_id}")]])
-            await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"💰 **PAGO: {caption_text}**\nID: `{v_id}`", reply_markup=btn)
+            # Botón de confirmación rápida y ID copiable para el Admin
+            btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar Pago ✅", callback_data=f"conf_direct_{v_id}")]])
+            await context.bot.send_photo(
+                ADMIN_CHAT_ID, 
+                fid, 
+                caption=f"💰 **PAGO RECIBIDO**\n\n"
+                        f"🆔 ID Vuelo: `{v_id}` (Copiable)\n"
+                        f"👤 Usuario: `{uid}`\n"
+                        f"💬 Nota: {caption_text}", 
+                reply_markup=btn,
+                parse_mode="Markdown"
+            )
             udata.clear()
 
         # 3. Admin enviando QRs (FLUJO: Instrucciones -> Foto -> Disfruta)
@@ -153,10 +164,8 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if update.effective_user.id != ADMIN_CHAT_ID: return
 
-    # --- BOTÓN PENDIENTES (Hoy + 5 días) ---
+    # --- BOTÓN PENDIENTES ---
     if query.data == "adm_pend":
-        inicio, fin = get_date_range()
-        # Filtramos por fecha y por estados que requieren acción
         res = supabase.table("cotizaciones").select("*")\
             .filter("estado", "in", '("Cotizado", "Pago Confirmado", "Esperando confirmación")')\
             .execute()
@@ -165,9 +174,15 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("No hay pendientes urgentes.")
             return
 
-        msj = "⏳ **PRÓXIMOS PENDIENTES (5 DÍAS)**\n\n"
+        msj = "⏳ **PRÓXIMOS PENDIENTES**\n\n"
         for v in res.data:
-            msj += f"🆔 `{v['id']}` | 👤 @{v['username']}\n📍 Est: {v['estado']}\n📝 {v['pedido_completo'][:30]}...\n\n"
+            # Datos formateados para ser copiables
+            msj += (f"🆔 ID Vuelo: `{v['id']}`\n"
+                    f"👤 User ID: `{v['user_id']}`\n"
+                    f"👤 @{v['username']}\n"
+                    f"📍 Estado: {v['estado']}\n"
+                    f"📝 Info: {v['pedido_completo']}\n\n"
+                    f"-------------------\n")
         await query.message.reply_text(msj, parse_mode="Markdown")
 
     # --- BOTÓN HISTORIAL TOTAL ---
@@ -175,9 +190,13 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = supabase.table("cotizaciones").select("*").order("id", desc=True).limit(20).execute()
         msj = "📜 **HISTORIAL RECIENTE**\n\n"
         for v in res.data:
-            msj += f"🆔 ID: `{v['id']}`\n👤 User: `{v['user_id']}` (@{v['username']})\n📝 Info: {v['pedido_completo']}\n✅ Estado: {v['estado']}\n---\n"
+            msj += (f"🆔 ID Vuelo: `{v['id']}`\n"
+                    f"👤 User ID: `{v['user_id']}`\n"
+                    f"👤 Username: `@{v['username']}`\n"
+                    f"📝 Info: {v['pedido_completo']}\n"
+                    f"✅ Estado: {v['estado']}\n"
+                    f"-------------------\n")
         
-        # Si el mensaje es muy largo, Telegram lo rebota, así que enviamos por partes si es necesario
         if len(msj) > 4000:
             await query.message.reply_text(msj[:4000], parse_mode="Markdown")
         else:
@@ -196,3 +215,4 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.run_polling()
+
