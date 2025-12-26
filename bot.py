@@ -231,13 +231,15 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     if __name__ == '__main__':
         try:
-            keep_alive()  # <--- Fíjate que tiene 4 espacios de sangría
+            keep_alive()  # Esto ya funciona y mantiene vivo el bot
+             print("Servidor web iniciado...")
             print("Servidor web iniciado...")
             application.run_polling()
         except Exception as e:
             print(f"Error al arrancar: {e}")
 if __name__ == "__main__":
     main()
+
 
 
 
