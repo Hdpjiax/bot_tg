@@ -2,115 +2,60 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Vuelos Pro | Suite Elite</title>
+    <title>Panel Control | Vuelos Pro</title>
+    <meta http-equiv="refresh" content="60">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background: #030803; color: #f0fdf4; font-family: 'Inter', sans-serif; }
-        .glass { background: rgba(10, 25, 10, 0.7); backdrop-filter: blur(15px); border: 1px solid rgba(34, 197, 94, 0.1); }
-        /* Uniformidad de Estados */
-        .status-badge { 
-            width: 180px; /* Tamaño fijo para uniformidad */
-            text-align: center;
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 900;
-            padding: 8px 0;
-            border-radius: 6px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-        .btn-action { transition: all 0.3s; font-weight: 700; font-size: 11px; }
-        .btn-action:hover { transform: scale(1.05); }
+        body { background: #050a05; color: #ecfdf5; font-family: sans-serif; }
+        .glass { background: rgba(16, 45, 16, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(52, 211, 153, 0.2); }
     </style>
 </head>
-<body class="flex min-h-screen">
-
-    <aside class="w-72 glass border-r border-emerald-500/10 flex flex-col p-6">
-        <h1 class="text-2xl font-black text-emerald-500 mb-10 italic">VUELOS<span class="text-white">PRO</span></h1>
-        <nav class="space-y-4">
-            <a href="/dashboard" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10">
-                <span><i class="fas fa-home mr-3"></i> General</span>
-            </a>
-            <a href="/dashboard/seccion/confirmar_pago" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10">
-                <span><i class="fas fa-money-bill-wave mr-3"></i> Validar Pagos</span>
-                <span class="bg-amber-500 text-black text-[10px] px-2 rounded-full">{{ validar_pago }}</span>
-            </a>
-            <a href="/dashboard/seccion/por_enviar_qr" class="flex justify-between items-center p-3 rounded-xl hover:bg-emerald-500/10 text-emerald-400">
-                <span><i class="fas fa-qrcode mr-3"></i> Por Enviar QR</span>
-                <span class="bg-emerald-500 text-black text-[10px] px-2 rounded-full">{{ por_enviar_qr }}</span>
-            </a>
-        </nav>
-    </aside>
-
-    <main class="flex-1 p-8">
-        <div class="grid grid-cols-3 gap-6 mb-8">
-            <div class="glass p-6 rounded-2xl border-l-4 border-emerald-500">
-                <p class="text-xs text-emerald-500 uppercase font-bold mb-1">Caja Total</p>
-                <p class="text-3xl font-black">${{ "{:,.2f}".format(total) }}</p>
-            </div>
-            <div class="glass p-6 rounded-2xl border-l-4 border-amber-500">
-                <p class="text-xs text-amber-500 uppercase font-bold mb-1">Próximas Salidas (48h)</p>
-                <p class="text-3xl font-black">Revisar Lista</p>
-            </div>
+<body class="p-8">
+    <div class="max-w-6xl mx-auto">
+        <div class="glass p-6 rounded-3xl mb-8 flex justify-between items-center">
+            <h1 class="text-3xl font-black text-emerald-500 italic">VUELOS PRO ADMIN</h1>
+            <span class="bg-emerald-500/20 text-emerald-400 px-4 py-1 rounded-full text-sm font-bold border border-emerald-500/30">DASHBOARD VIRTUAL</span>
         </div>
 
-        <div class="glass rounded-3xl overflow-hidden shadow-2xl">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-emerald-500/5">
-                    <tr class="text-[10px] uppercase text-emerald-500 font-bold tracking-widest">
-                        <th class="p-5">ID / Pasajero</th>
-                        <th class="p-5 w-1/3">Itinerario y Detalles</th>
+        <div class="glass rounded-3xl overflow-hidden">
+            <table class="w-full text-left">
+                <thead class="bg-emerald-900/50 text-emerald-400 text-xs uppercase font-bold">
+                    <tr>
+                        <th class="p-5">ID</th>
+                        <th class="p-5">Usuario</th>
+                        <th class="p-5">Detalles</th>
                         <th class="p-5">Monto</th>
-                        <th class="p-5 text-center">Estado del Vuelo</th>
-                        <th class="p-5 text-center">Gestión Rápida</th>
+                        <th class="p-5">Estado</th>
+                        <th class="p-5 text-center">Acción</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-white/5">
+                <tbody class="divide-y divide-emerald-900/30">
                     {% for v in vuelos %}
-                    <tr class="hover:bg-white/[0.02]">
+                    <tr class="hover:bg-emerald-500/5 transition">
+                        <td class="p-5 font-mono text-emerald-500 font-bold">#{{ v.id }}</td>
+                        <td class="p-5 font-bold">@{{ v.username or '---' }}</td>
+                        <td class="p-5 text-sm opacity-70">{{ v.pedido_completo }}</td>
+                        <td class="p-5 font-black text-white text-lg">{{ '$' ~ v.monto if v.monto else '---' }}</td>
                         <td class="p-5">
-                            <span class="text-emerald-500 font-black text-xl">#{{ v.id }}</span><br>
-                            <span class="text-xs opacity-50">@{{ v.username }}</span>
-                        </td>
-                        <td class="p-5 text-lg font-medium leading-tight">
-                            {{ v.pedido_completo }}
-                        </td>
-                        <td class="p-5 text-2xl font-black text-white">
-                            ${{ v.monto or '0' }}
-                        </td>
-                        <td class="p-5 text-center">
-                            <span class="status-badge 
-                                {% if 'atención' in v.estado %} bg-amber-500/10 text-amber-500 border border-amber-500/40
-                                {% elif 'Confirmado' in v.estado %} bg-emerald-500/10 text-emerald-400 border border-emerald-500/40
-                                {% elif 'Cotizado' in v.estado %} bg-blue-500/10 text-blue-400 border border-blue-500/40
-                                {% else %} bg-white/5 text-white/40 border border-white/10 {% endif %}">
+                            <span class="px-3 py-1 rounded-full text-[10px] font-bold border 
+                                {% if 'Esperando' in v.estado %} border-amber-500 text-amber-500 bg-amber-500/10 
+                                {% elif 'Confirmado' in v.estado %} border-emerald-500 text-emerald-400 bg-emerald-500/10
+                                {% else %} border-blue-400 text-blue-400 bg-blue-500/10 {% endif %}">
                                 {{ v.estado }}
                             </span>
                         </td>
                         <td class="p-5">
-                            <div class="flex flex-col gap-2 items-center">
+                            <div class="flex gap-2 justify-center">
                                 {% if v.estado == 'Esperando atención' %}
-                                    <form action="/accion/web_cotizar" method="POST" class="flex gap-1">
-                                        <input type="hidden" name="v_id" value="{{ v.id }}">
-                                        <input type="text" name="monto" placeholder="$" class="w-16 bg-black border border-emerald-500/30 rounded p-1 text-xs text-white">
-                                        <button type="submit" class="btn-action bg-emerald-500 text-black px-3 py-1 rounded shadow-lg shadow-emerald-500/20">COTIZAR</button>
-                                    </form>
+                                <form action="/accion/web_cotizar" method="POST" class="flex gap-2">
+                                    <input type="hidden" name="v_id" value="{{ v.id }}">
+                                    <input type="text" name="monto" placeholder="Monto" class="w-20 bg-black border border-emerald-500/30 rounded px-2 text-sm text-white">
+                                    <button type="submit" class="bg-emerald-500 text-black font-bold px-3 py-1 rounded text-xs hover:bg-white transition">ENVIAR</button>
+                                </form>
                                 {% endif %}
-
-                                {% if v.estado == 'Pago Confirmado' %}
-                                    <button onclick="alert('Funcionalidad: El bot pedirá los QRs para el ID {{v.id}}')" class="btn-action bg-white text-black px-6 py-2 rounded flex items-center gap-2">
-                                        <i class="fas fa-upload text-[10px]"></i> ENVIAR QR
-                                    </button>
+                                {% if 'confirmación' in v.estado or v.estado == 'Esperando confirmación' %}
+                                <a href="/accion/web_confirmar/{{ v.id }}" class="bg-white text-black font-bold px-4 py-1 rounded text-xs hover:bg-emerald-400 transition">CONFIRMAR PAGO</a>
                                 {% endif %}
-
-                                {% if 'confirmación' in v.estado %}
-                                    <a href="/accion/web_confirmar/{{ v.id }}" class="btn-action bg-blue-600 text-white px-6 py-2 rounded">VALIDAR PAGO</a>
-                                {% endif %}
-
-                                <a href="/accion/eliminar/{{ v.id }}" onclick="return confirm('¿Eliminar registro?')" class="text-red-500/40 hover:text-red-500 text-[10px] mt-2">
-                                    <i class="fas fa-trash-alt mr-1"></i> BORRAR REGISTRO
-                                </a>
                             </div>
                         </td>
                     </tr>
@@ -118,6 +63,6 @@
                 </tbody>
             </table>
         </div>
-    </main>
+    </div>
 </body>
 </html>
