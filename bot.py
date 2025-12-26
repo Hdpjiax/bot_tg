@@ -230,12 +230,15 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     if __name__ == '__main__':
-    keep_alive()  # Inicia el servidor web
-    print("Servidor web iniciado...")
-    application.run_polling() # Inicia tu bot
-
+        try:
+            keep_alive()  # <--- Fíjate que tiene 4 espacios de sangría
+            print("Servidor web iniciado...")
+            application.run_polling()
+        except Exception as e:
+            print(f"Error al arrancar: {e}")
 if __name__ == "__main__":
     main()
+
 
 
 
