@@ -2,60 +2,103 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Panel Control | Vuelos Pro</title>
-    <meta http-equiv="refresh" content="60">
+    <title>Vuelos Pro | Suite Administrativa</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background: #050a05; color: #ecfdf5; font-family: sans-serif; }
-        .glass { background: rgba(16, 45, 16, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(52, 211, 153, 0.2); }
+        body { background: #020602; color: #f0fdf4; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(16, 45, 16, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.1); }
+        .sidebar-item:hover { background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10b981; }
+        .badge { font-size: 14px; padding: 6px 12px; font-weight: 800; border-radius: 8px; text-transform: uppercase; }
     </style>
 </head>
-<body class="p-8">
-    <div class="max-w-6xl mx-auto">
-        <div class="glass p-6 rounded-3xl mb-8 flex justify-between items-center">
-            <h1 class="text-3xl font-black text-emerald-500 italic">VUELOS PRO ADMIN</h1>
-            <span class="bg-emerald-500/20 text-emerald-400 px-4 py-1 rounded-full text-sm font-bold border border-emerald-500/30">DASHBOARD VIRTUAL</span>
-        </div>
+<body class="flex min-h-screen">
 
-        <div class="glass rounded-3xl overflow-hidden">
-            <table class="w-full text-left">
-                <thead class="bg-emerald-900/50 text-emerald-400 text-xs uppercase font-bold">
+    <aside class="w-72 glass border-r border-emerald-500/10 flex flex-col">
+        <div class="p-8">
+            <h1 class="text-2xl font-black italic tracking-tighter text-emerald-500">VUELOS<span class="text-white">PRO</span></h1>
+        </div>
+        
+        <nav class="flex-1 px-4 space-y-2">
+            <a href="/dashboard" class="sidebar-item flex items-center p-4 rounded-xl transition">
+                <i class="fas fa-chart-line w-8"></i> Estadísticas
+            </a>
+            <div class="text-[10px] text-emerald-500/50 font-bold px-4 mt-6 mb-2 tracking-widest uppercase">Operaciones</div>
+            <a href="/dashboard/seccion/por_cotizar" class="sidebar-item flex items-center p-4 rounded-xl transition">
+                <i class="fas fa-calculator w-8"></i> Por Cotizar
+            </a>
+            <a href="/dashboard/seccion/confirmar_pago" class="sidebar-item flex items-center p-4 rounded-xl transition">
+                <i class="fas fa-receipt w-8"></i> Validar Pagos
+            </a>
+            <a href="/dashboard/seccion/proximos" class="sidebar-item flex items-center p-4 rounded-xl transition">
+                <i class="fas fa-calendar-alt w-8"></i> Próximos (5 días)
+            </a>
+            <a href="/dashboard/seccion/enviados" class="sidebar-item flex items-center p-4 rounded-xl transition">
+                <i class="fas fa-check-double w-8"></i> Historial QR
+            </a>
+        </nav>
+    </aside>
+
+    <main class="flex-1 p-10 overflow-y-auto">
+        
+        {% if seccion == "stats" %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            <div class="glass p-8 rounded-[2rem] border-b-4 border-emerald-500">
+                <p class="text-emerald-500 text-xs font-bold uppercase tracking-widest mb-2">Total Recaudado</p>
+                <h2 class="text-5xl font-black">${{ "{:,.2f}".format(total) }}</h2>
+            </div>
+            <div class="glass p-8 rounded-[2rem] border-b-4 border-amber-500">
+                <p class="text-amber-500 text-xs font-bold uppercase tracking-widest mb-2">Pendientes Atención</p>
+                <h2 class="text-5xl font-black">{{ pendientes }}</h2>
+            </div>
+            <div class="glass p-8 rounded-[2rem] border-b-4 border-blue-500">
+                <p class="text-blue-500 text-xs font-bold uppercase tracking-widest mb-2">Usuarios Activos</p>
+                <h2 class="text-5xl font-black">{{ vuelos|map(attribute='username')|unique|list|length }}</h2>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="glass rounded-[2.5rem] overflow-hidden">
+            <div class="p-8 border-b border-white/5 flex justify-between items-center">
+                <h3 class="text-xl font-bold">{{ titulo or "LISTADO DE VUELOS" }}</h3>
+            </div>
+            <table class="w-full">
+                <thead class="bg-white/5 text-[11px] uppercase tracking-tighter text-emerald-500">
                     <tr>
-                        <th class="p-5">ID</th>
-                        <th class="p-5">Usuario</th>
-                        <th class="p-5">Detalles</th>
-                        <th class="p-5">Monto</th>
-                        <th class="p-5">Estado</th>
-                        <th class="p-5 text-center">Acción</th>
+                        <th class="p-6">ID / Usuario</th>
+                        <th class="p-6">Información de Vuelo</th>
+                        <th class="p-6">Monto</th>
+                        <th class="p-6">Estado</th>
+                        <th class="p-6 text-center">Gestión</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-emerald-900/30">
+                <tbody class="divide-y divide-white/5">
                     {% for v in vuelos %}
-                    <tr class="hover:bg-emerald-500/5 transition">
-                        <td class="p-5 font-mono text-emerald-500 font-bold">#{{ v.id }}</td>
-                        <td class="p-5 font-bold">@{{ v.username or '---' }}</td>
-                        <td class="p-5 text-sm opacity-70">{{ v.pedido_completo }}</td>
-                        <td class="p-5 font-black text-white text-lg">{{ '$' ~ v.monto if v.monto else '---' }}</td>
-                        <td class="p-5">
-                            <span class="px-3 py-1 rounded-full text-[10px] font-bold border 
-                                {% if 'Esperando' in v.estado %} border-amber-500 text-amber-500 bg-amber-500/10 
-                                {% elif 'Confirmado' in v.estado %} border-emerald-500 text-emerald-400 bg-emerald-500/10
-                                {% else %} border-blue-400 text-blue-400 bg-blue-500/10 {% endif %}">
+                    <tr class="hover:bg-white/[0.02] transition">
+                        <td class="p-6">
+                            <div class="font-mono text-emerald-500 font-bold text-lg">#{{ v.id }}</div>
+                            <a href="/dashboard/usuario/{{ v.username }}" class="text-xs hover:underline text-white/50">@{{ v.username }}</a>
+                        </td>
+                        <td class="p-6 text-sm italic opacity-80">{{ v.pedido_completo }}</td>
+                        <td class="p-6 font-black text-xl">${{ v.monto or '0' }}</td>
+                        <td class="p-6">
+                            <span class="badge 
+                                {% if 'Esperando' in v.estado %} bg-amber-500/20 text-amber-500 border border-amber-500/30
+                                {% elif 'Confirmado' in v.estado %} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30
+                                {% else %} bg-blue-500/20 text-blue-400 border border-blue-500/30 {% endif %}">
                                 {{ v.estado }}
                             </span>
                         </td>
-                        <td class="p-5">
-                            <div class="flex gap-2 justify-center">
-                                {% if v.estado == 'Esperando atención' %}
-                                <form action="/accion/web_cotizar" method="POST" class="flex gap-2">
-                                    <input type="hidden" name="v_id" value="{{ v.id }}">
-                                    <input type="text" name="monto" placeholder="Monto" class="w-20 bg-black border border-emerald-500/30 rounded px-2 text-sm text-white">
-                                    <button type="submit" class="bg-emerald-500 text-black font-bold px-3 py-1 rounded text-xs hover:bg-white transition">ENVIAR</button>
-                                </form>
+                        <td class="p-6">
+                            <div class="flex justify-center gap-4">
+                                {% if v.estado != 'Pago Confirmado' %}
+                                <a href="/accion/eliminar/{{ v.id }}" onclick="return confirm('¿Seguro que deseas eliminar este registro?')" class="text-red-500 hover:text-red-400 p-2">
+                                    <i class="fas fa-trash-alt"></i>
+                                </a>
                                 {% endif %}
-                                {% if 'confirmación' in v.estado or v.estado == 'Esperando confirmación' %}
-                                <a href="/accion/web_confirmar/{{ v.id }}" class="bg-white text-black font-bold px-4 py-1 rounded text-xs hover:bg-emerald-400 transition">CONFIRMAR PAGO</a>
-                                {% endif %}
+                                <button class="bg-white/5 p-2 rounded-lg hover:bg-emerald-500/20 text-emerald-500">
+                                    <i class="fas fa-edit"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -63,6 +106,7 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </main>
+
 </body>
 </html>
