@@ -3,13 +3,29 @@ import os
 import threading
 from flask import Flask
 from supabase import create_client, Client
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    ReplyKeyboardMarkup,
+    KeyboardButton
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters
+)
 
-# --- CONFIGURACIÓN DE RED (KEEP-ALIVE) ---
+# --- CONFIGURACIÓN DE FLASK PARA RENDER ---
 app_web = Flask('')
+
 @app_web.route('/')
-def home(): return "Bot Live!"
+def home():
+    return "Bot is alive and healthy!"
 
 def run():
     port = int(os.environ.get("PORT", 10000))
@@ -18,7 +34,10 @@ def run():
 def keep_alive():
     threading.Thread(target=run).start()
 
-# --- CONFIGURACIÓN VARIABLES ---
+# =========================
+# 🔧 CONFIGURACIÓN
+# =========================
+# Se obtienen de las variables de entorno de Render
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 7721918273
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -26,104 +45,142 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- BOTONES ---
-MENU_PRINCIPAL = ReplyKeyboardMarkup([
-    [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
-    [KeyboardButton("📜 Mi Historial"), KeyboardButton("🏦 Datos de Pago")]
-], resize_keyboard=True)
+CUENTA_BANCARIA = (
+    "🏦 *DATOS DE PAGO (Toca para copiar)*\n\n"
+    "Banco: `BBVA`\n"
+    "CLABE: `012180015886058959`\n"
+    "Titular: `Antonio Garcia`\n"
+    "Concepto: `Ropa`"
+)
 
-# --- LÓGICA ---
+TEXTO_INSTRUCCIONES_QR = (
+    "⚠️ **Instrucciones para evitar caídas:**\n\n"
+    "Luego de tener tu código QR con tu pase:\n"
+    "• **No agregar a la app.**\n"
+    "• **No revisar en lo absoluto el vuelo.**\n"
+    "• **Solo dejar guardada la foto** en tu galería."
+)
 
+logging.basicConfig(level=logging.INFO)
+
+# =========================
+# 🚀 COMANDO START
+# =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✈️ **Bienvenido al Gestor de Vuelos**", reply_markup=MENU_PRINCIPAL, parse_mode="Markdown")
+    teclado = [
+        [KeyboardButton("📝 Enviar datos de vuelo"), KeyboardButton("📸 Enviar Imagen/Pago")],
+        [KeyboardButton("🏦 Ver Datos de Pago"), KeyboardButton("📞 Soporte")]
+    ]
+    mensaje_flujo = (
+        "✈️ **¡Bienvenido!**\n\n"
+        "1️⃣ Toca 'Enviar datos de vuelo' y escribe los detalles.\n"
+        "2️⃣ Luego envía la foto del vuelo o comprobante.\n"
+        "3️⃣ El sistema guardará todo automáticamente."
+    )
+    await update.message.reply_text(mensaje_flujo, reply_markup=ReplyKeyboardMarkup(teclado, resize_keyboard=True), parse_mode="Markdown")
 
-async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    # Consultamos todos los vuelos del usuario
-    res = supabase.table("cotizaciones").select("*").eq("user_id", uid).execute()
-    
-    if not res.data:
-        await update.message.reply_text("📭 No tienes vuelos registrados aún.")
+# =========================
+# ✍️ MANEJO DE TEXTO
+# =========================
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.message.from_user.id
+    texto = update.message.text.strip()
+
+    # Filtros de botones del menú
+    if texto == "📝 Enviar datos de vuelo":
+        context.user_data["esperando"] = "datos_vuelo"
+        await update.message.reply_text("Escribe los detalles de tu vuelo (Origen, Destino, Fecha):")
+        return
+    if texto == "📸 Enviar Imagen/Pago":
+        context.user_data["esperando"] = "pago"
+        await update.message.reply_text("Adjunta la imagen de tu comprobante:")
+        return
+    if texto == "🏦 Ver Datos de Pago":
+        await update.message.reply_text(CUENTA_BANCARIA, parse_mode="Markdown")
+        return
+    if texto == "📞 Soporte":
+        await update.message.reply_text("Contacto: @Soporte_Vuelos")
         return
 
-    await update.message.reply_text(f"📋 **Tus Vuelos Registrados:**", parse_mode="Markdown")
-    
-    for v in res.data:
-        # Definir emojis según el estado
-        estado = v.get('estado', 'Esperando Pago')
-        emoji = "⏳" if "Esperando" in estado else "✅" if "Pagado" in estado else "🎫"
-        
-        info = (f"🆔 **ID:** `{v['id']}`\n"
-                f"✈️ **Detalles:** {v['pedido_completo']}\n"
-                f"💰 **Monto:** {v['monto']}\n"
-                f"{emoji} **Estado:** {estado}")
-        
-        # Botón para borrar este registro específico
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🗑️ Eliminar este vuelo", callback_data=f"del_{v['id']}")]])
-        await update.message.reply_text(info, reply_markup=btn, parse_mode="Markdown")
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = update.message.text
-    uid = update.effective_user.id
-
-    if texto == "📝 Datos de vuelo":
-        context.user_data["esperando"] = "texto_vuelo"
-        await update.message.reply_text("Por favor, escribe el Origen, Destino y Fecha:")
-    elif texto == "📜 Mi Historial":
-        await mostrar_historial(update, context)
-    elif texto == "📸 Enviar Pago":
-        await update.message.reply_text("Envía la captura de tu comprobante de pago:")
-    elif texto == "🏦 Datos de Pago":
-        await update.message.reply_text("🏦 **BBVA**\nCLABE: `012180015886058959`\nTitular: Antonio Garcia", parse_mode="Markdown")
-    elif context.user_data.get("esperando") == "texto_vuelo":
+    # Si es un usuario enviando información de vuelo
+    if update.effective_chat.id != ADMIN_CHAT_ID:
+        # Guardamos el texto temporalmente en memoria del bot
         context.user_data["temp_text"] = texto
-        await update.message.reply_text("✅ Detalles guardados. Ahora **envía una imagen** (referencia o pago) para registrarlo.")
+        await update.message.reply_text("✅ Texto recibido. Ahora **envía la imagen** para completar el envío al admin.")
 
+# =========================
+# 📸 MANEJO DE IMÁGENES (FLUJO AUTOMÁTICO)
+# =========================
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    user_name = f"@{update.effective_user.username}" or update.effective_user.first_name
-    
-    if not update.message.photo: return
-    file_id = update.message.photo[-1].file_id
+    chat_id = update.effective_chat.id
+    msg = update.message
+    uid = msg.from_user.id
+    user_name = f"@{msg.from_user.username}" if msg.from_user.username else msg.from_user.first_name
 
-    # Lógica de guardado: si hay texto previo se usa, si no, se marca como comprobante
-    detalles = context.user_data.get("temp_text", "comprobante")
-    estado_inicial = "Pagado (Revisión)" if detalles == "comprobante" else "Esperando Pago"
+    if msg.photo: file_id = msg.photo[-1].file_id
+    elif msg.document and msg.document.mime_type.startswith("image/"): file_id = msg.document.file_id
+    else: return
 
-    try:
-        res = supabase.table("cotizaciones").insert({
-            "user_id": uid, "username": user_name,
-            "pedido_completo": detalles, "monto": "Pendiente", "estado": estado_inicial
-        }).execute()
+    # --- FLUJO USUARIO ---
+    if chat_id != ADMIN_CHAT_ID:
+        # Recuperamos el texto guardado anteriormente
+        texto_vuelo = context.user_data.get("temp_text", "comprobante" if not msg.caption else msg.caption)
         
-        v_id = res.data[0]['id']
-        await context.bot.send_photo(ADMIN_CHAT_ID, file_id, caption=f"🔔 **NUEVO REGISTRO ID: {v_id}**\n👤 {user_name}\n📝 {detalles}\n📍 Estado: {estado_inicial}")
-        await update.message.reply_text(f"✅ Vuelo registrado con éxito.\n🆔 ID: {v_id}\n📍 Estado: {estado_inicial}")
-        context.user_data.clear()
-    except Exception as e:
-        logging.error(f"Error Supabase: {e}")
+        # 1. GUARDAR EN SUPABASE AUTOMÁTICAMENTE
+        try:
+            res = supabase.table("cotizaciones").insert({
+                "user_id": uid,
+                "username": user_name,
+                "pedido_completo": texto_vuelo,
+                "monto": "Pendiente",
+                "estado": "Pendiente"
+            }).execute()
+            
+            vuelo_id = res.data[0]['id']
+            
+            # 2. ENVIAR AL ADMIN (TEXTO + IMAGEN JUNTO)
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Eliminar Vuelo", callback_data=f"del_{vuelo_id}")]])
+            
+            await context.bot.send_photo(
+                ADMIN_CHAT_ID, 
+                file_id, 
+                caption=f"🚀 **NUEVA SOLICITUD (ID: {vuelo_id})**\n👤 {user_name}\n🆔 `{uid}`\n📝 {texto_vuelo}",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+            
+            await msg.reply_text(f"✅ ¡Todo enviado! Tu solicitud ha sido registrada con el ID: {vuelo_id}")
+            context.user_data.clear() # Limpiar memoria temporal
+            
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            await msg.reply_text("Hubo un error al guardar los datos.")
 
+# =========================
+# 🔘 CALLBACKS (ELIMINAR)
+# =========================
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data.startswith("del_"):
-        v_id = query.data.split("_")[1]
-        try:
-            supabase.table("cotizaciones").delete().eq("id", v_id).execute()
-            await query.edit_message_text(f"🗑️ El vuelo con ID `{v_id}` ha sido eliminado de la base de datos.", parse_mode="Markdown")
-        except Exception as e:
-            await query.edit_message_text(f"❌ Error al borrar: {e}")
 
-if __name__ == "__main__":
-    keep_alive() # Inicia el servidor Flask para Cron-job
+    if query.data.startswith("del_"):
+        vuelo_id = query.data.split("_")[1]
+        supabase.table("cotizaciones").delete().eq("id", vuelo_id).execute()
+        await query.edit_message_caption(caption=f"🗑️ Vuelo ID {vuelo_id} eliminado de la base de datos.")
+
+def main():
+    # Iniciar mantenimiento de vida para Render
+    keep_alive()
     
-    # Se usa 'app' para evitar el error 'application not defined'
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(CallbackQueryHandler(callbacks))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_media))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
+    print("Bot activo...")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
