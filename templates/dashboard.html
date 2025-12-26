@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vuelos Pro | Command Center</title>
+    <meta http-equiv="refresh" content="45">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background: #040d04; color: #ecfdf5; font-family: 'Segoe UI', sans-serif; }
+        .glass { background: rgba(16, 45, 16, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(52, 211, 153, 0.2); }
+        .emerald-text { color: #10b981; text-shadow: 0 0 10px rgba(16, 185, 129, 0.3); }
+        .card-hover:hover { transform: translateY(-3px); transition: all 0.3s ease; border-color: #10b981; }
+    </style>
+</head>
+<body class="p-4 lg:p-10">
+
+    <header class="flex justify-between items-center mb-10 glass p-6 rounded-3xl">
+        <div class="flex items-center gap-4">
+            <div class="bg-emerald-500 p-3 rounded-2xl shadow-lg shadow-emerald-500/20">
+                <i class="fas fa-plane-departure text-black text-xl"></i>
+            </div>
+            <h1 class="text-2xl font-black uppercase italic tracking-tighter">Vuelos<span class="emerald-text">Pro</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-xs bg-emerald-500/10 text-emerald-400 px-4 py-2 rounded-full border border-emerald-500/20">ADMIN ACTIVE</span>
+            <button onclick="location.reload()" class="hover:rotate-180 transition-all duration-700 text-emerald-500 p-2">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 gap-6">
+        <div class="glass rounded-[2rem] overflow-hidden shadow-2xl">
+            <table class="w-full text-left">
+                <thead class="bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-widest font-bold">
+                    <tr>
+                        <th class="p-6">ID</th>
+                        <th class="p-6">Usuario</th>
+                        <th class="p-6">Detalles del Pedido</th>
+                        <th class="p-6">Monto</th>
+                        <th class="p-6">Estatus</th>
+                        <th class="p-6 text-center">Controles de Admin</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-emerald-500/10">
+                    {% for vuelo in vuelos %}
+                    <tr class="hover:bg-emerald-500/[0.03] transition group">
+                        <td class="p-6 font-mono text-emerald-500 font-bold">#{{ vuelo.id }}</td>
+                        <td class="p-6">@{{ vuelo.username }}</td>
+                        <td class="p-6 text-sm opacity-70">{{ vuelo.pedido_completo }}</td>
+                        <td class="p-6 font-bold text-lg text-white">
+                            {{ '$' ~ vuelo.monto if vuelo.monto else '---' }}
+                        </td>
+                        <td class="p-6">
+                            <span class="px-3 py-1 rounded-full text-[10px] font-black border 
+                                {% if 'Esperando' in vuelo.estado %} border-amber-500 text-amber-500 bg-amber-500/10 
+                                {% elif 'Confirmado' in vuelo.estado %} border-emerald-500 text-emerald-400 bg-emerald-500/10
+                                {% else %} border-blue-400 text-blue-400 bg-blue-500/10 {% endif %}">
+                                {{ vuelo.estado.upper() }}
+                            </span>
+                        </td>
+                        <td class="p-6">
+                            <div class="flex justify-center gap-3">
+                                {% if vuelo.estado == 'Esperando atención' %}
+                                <form action="/accion/web_cotizar" method="POST" class="flex gap-2">
+                                    <input type="hidden" name="v_id" value="{{ vuelo.id }}">
+                                    <input type="text" name="monto" placeholder="$0.00" class="w-20 bg-black/40 border border-emerald-500/30 rounded-xl px-3 py-1 text-xs focus:border-emerald-500 outline-none">
+                                    <button type="submit" class="bg-emerald-500 text-black font-bold text-[10px] px-4 py-2 rounded-xl hover:bg-white transition">ENVIAR COTIZACIÓN</button>
+                                </form>
+                                {% endif %}
+
+                                {% if 'confirmación' in vuelo.estado %}
+                                <a href="/accion/web_confirmar/{{ vuelo.id }}" class="bg-white text-black font-bold text-[10px] px-6 py-2 rounded-xl hover:bg-emerald-400 transition">VALIDAR PAGO</a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
