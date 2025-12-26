@@ -15,7 +15,7 @@ from telegram.ext import (
 # --- 1. SERVIDOR KEEP-ALIVE ---
 app_web = Flask('')
 @app_web.route('/')
-def home(): return "Bot Online 🚀"
+def home(): return "Servidor Multi-Transacción Activo 🚀"
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
@@ -35,73 +35,90 @@ logging.basicConfig(level=logging.INFO)
 def get_user_keyboard():
     return ReplyKeyboardMarkup([
         [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
-        [KeyboardButton("🏦 Datos de Pago")]
+        [KeyboardButton("📜 Mis Pedidos"), KeyboardButton("🏦 Datos de Pago")]
     ], resize_keyboard=True)
 
 def get_admin_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 Cotizar", callback_data="adm_cot"),
-         InlineKeyboardButton("✅ Confirmar Pago", callback_data="adm_conf")],
-        [InlineKeyboardButton("📜 Historial", callback_data="adm_his")]
+        [InlineKeyboardButton("💰 Cotizar ID", callback_data="adm_cot"),
+         InlineKeyboardButton("✅ Confirmar Pago ID", callback_data="adm_conf")],
+        [InlineKeyboardButton("📊 Ver Todos los Pendientes", callback_data="adm_his")]
     ])
 
-# --- 4. LÓGICA DE MENSAJES ---
+# --- 4. FUNCIONES DE USUARIO ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "✈️ **Bienvenido**\nSelecciona una opción del menú:",
+        "✈️ **Sistema de Gestión de Vuelos**\nBienvenido. Selecciona una opción:",
         reply_markup=get_user_keyboard(),
         parse_mode="Markdown"
     )
+
+async def mostrar_pedidos_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    # Traemos todos los registros de este usuario específico
+    res = supabase.table("cotizaciones").select("*").eq("user_id", uid).order("id", desc=True).execute()
+    
+    if not res.data:
+        await update.message.reply_text("📭 No tienes pedidos registrados.")
+        return
+
+    await update.message.reply_text("📋 **Tus pedidos actuales:**")
+    for v in res.data:
+        info = (f"🆔 ID Pedido: `{v['id']}`\n"
+                f"📝 Detalle: {v['pedido_completo']}\n"
+                f"💰 Monto: {v['monto']}\n"
+                f"📍 Estado: {v['estado']}")
+        await update.message.reply_text(info, parse_mode="Markdown")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     texto = update.message.text
     udata = context.user_data
 
-    # --- FLUJO USUARIO ---
+    # --- BOTONES USUARIO ---
     if texto == "📝 Datos de vuelo":
         udata["modo"] = "vuelo"
-        await update.message.reply_text("Escribe Origen, Destino y Fecha:")
+        await update.message.reply_text("Escribe: Origen, Destino y Fecha:")
     elif texto == "📸 Enviar Pago":
         udata["modo"] = "pago"
-        await update.message.reply_text("Adjunta la foto de tu comprobante:")
+        await update.message.reply_text("Envía la foto de tu comprobante:")
+    elif texto == "📜 Mis Pedidos":
+        await mostrar_pedidos_usuario(update, context)
     elif texto == "🏦 Datos de Pago":
         await update.message.reply_text("🏦 **BBVA**\nCLABE: `012180015886058959`\nTitular: Antonio Garcia", parse_mode="Markdown")
 
-    # --- FLUJO ADMIN (LOGICA COTIZAR/CONFIRMAR) ---
+    # --- LÓGICA DE ADMIN (USANDO ID DE REGISTRO) ---
     elif uid == ADMIN_CHAT_ID:
         if udata.get("adm_state") == "wait_id_cot":
-            udata["target_id"] = texto
+            udata["target_row_id"] = texto
             udata["adm_state"] = "wait_monto"
-            await update.message.reply_text(f"ID `{texto}` seleccionado. Ahora escribe el **monto**:")
+            await update.message.reply_text(f"Pedido `{texto}` seleccionado. Escribe el **monto**:")
         
         elif udata.get("adm_state") == "wait_monto":
-            v_id = udata["target_id"]
-            monto = texto
+            row_id = udata["target_row_id"]
             try:
-                # Actualizar DB
-                res = supabase.table("cotizaciones").update({"monto": monto, "estado": "Cotizado"}).eq("id", v_id).execute()
-                u_id = res.data[0]["user_id"]
-                # Notificar al usuario
-                await context.bot.send_message(u_id, f"💰 Tu vuelo ID `{v_id}` ha sido cotizado: **{monto}**", parse_mode="Markdown")
-                await update.message.reply_text(f"✅ Cotización enviada al usuario `{u_id}`.")
+                # Buscamos al usuario dueño de ese pedido ID
+                res = supabase.table("cotizaciones").update({"monto": texto, "estado": "Cotizado"}).eq("id", row_id).execute()
+                user_to_notify = res.data[0]["user_id"]
+                await context.bot.send_message(user_to_notify, f"💰 Tu pedido ID `{row_id}` ha sido cotizado: **{texto}**", parse_mode="Markdown")
+                await update.message.reply_text(f"✅ Enviado al usuario `{user_to_notify}`.")
                 udata.clear()
-            except: await update.message.reply_text("❌ ID no encontrado.")
+            except: await update.message.reply_text("❌ Error: ID de pedido no válido.")
 
         elif udata.get("adm_state") == "wait_id_conf":
             try:
                 res = supabase.table("cotizaciones").update({"estado": "✅ Pagado"}).eq("id", texto).execute()
-                u_id = res.data[0]["user_id"]
-                await context.bot.send_message(u_id, f"✅ El pago de tu vuelo ID `{texto}` ha sido confirmado.")
-                await update.message.reply_text(f"✅ Pago confirmado para el ID `{texto}`.")
+                user_to_notify = res.data[0]["user_id"]
+                await context.bot.send_message(user_to_notify, f"✅ Pago confirmado para el pedido ID `{texto}`.")
+                await update.message.reply_text(f"✅ Pedido `{texto}` marcado como PAGADO.")
                 udata.clear()
-            except: await update.message.reply_text("❌ ID no encontrado.")
+            except: await update.message.reply_text("❌ Error: ID de pedido no válido.")
 
-    # Guardar texto de vuelo antes de la foto
+    # Guardar info de vuelo antes de la foto
     elif udata.get("modo") == "vuelo":
-        udata["vuelo_info"] = texto
-        await update.message.reply_text("✅ Datos recibidos. Ahora envía la foto para finalizar.")
+        udata["temp_info"] = texto
+        await update.message.reply_text("✅ Datos anotados. Envía la foto para completar la **Cotización de vuelo**.")
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo: return
@@ -110,37 +127,37 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fid = update.message.photo[-1].file_id
     udata = context.user_data
 
-    # Etiquetas solicitadas
+    # Diferenciación automática de etiquetas
     if udata.get("modo") == "vuelo":
-        titulo = "Cotización de vuelo"
-        descripcion = f"{titulo}: {udata.get('vuelo_info', 'Ver foto')}"
-    elif udata.get("modo") == "pago":
-        titulo = "Comprobante de pago"
-        descripcion = titulo
+        etiqueta = "Cotización de vuelo"
+        descripcion = f"{etiqueta}: {udata.get('temp_info', 'Sin detalles')}"
     else:
-        return # No procesar fotos fuera de flujo
+        # Por defecto o si eligió "Enviar Pago", es comprobante [Instrucción 2025-12-24]
+        etiqueta = "Comprobante de pago"
+        descripcion = etiqueta
 
     try:
+        # Insertar nuevo registro (permite múltiples filas por usuario)
         res = supabase.table("cotizaciones").insert({
             "user_id": uid, "username": uname,
             "pedido_completo": descripcion, "monto": "Pendiente", "estado": "Pendiente"
         }).execute()
         
-        v_id = res.data[0]['id']
+        row_id = res.data[0]['id']
         
-        # Notificar Admin (IDs copiables)
-        msg_admin = (f"🔔 **{titulo.upper()}**\n"
-                    f"🆔 Vuelo: `{v_id}`\n"
+        # Notificación al ADMIN (Todo copiable)
+        admin_msg = (f"🔔 **{etiqueta.upper()}**\n"
+                    f"🆔 Pedido: `{row_id}`\n"
                     f"👤 Usuario: `{uid}`\n"
-                    f"📝 Detalle: {descripcion}")
+                    f"📝 Info: {descripcion}")
         
-        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=msg_admin, parse_mode="Markdown")
-        await update.message.reply_text(f"✅ Registrado como: {titulo}\n🆔 ID de seguimiento: `{v_id}`", parse_mode="Markdown")
+        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=admin_msg, parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Recibido como: {etiqueta}\n🆔 Tu ID de pedido es: `{row_id}`", parse_mode="Markdown")
         udata.clear()
     except Exception as e:
         logging.error(f"Error: {e}")
 
-# --- 5. COMANDOS Y CALLBACKS ADMIN ---
+# --- 5. COMANDOS ADMIN ---
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
@@ -153,16 +170,20 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "adm_cot":
         context.user_data["adm_state"] = "wait_id_cot"
-        await query.message.reply_text("Escribe el **ID del vuelo** a cotizar:")
+        await query.message.reply_text("Escribe el **ID de Pedido**:")
     
     elif query.data == "adm_conf":
         context.user_data["adm_state"] = "wait_id_conf"
-        await query.message.reply_text("Escribe el **ID del vuelo** para confirmar pago:")
+        await query.message.reply_text("Escribe el **ID de Pedido** a confirmar:")
 
     elif query.data == "adm_his":
-        res = supabase.table("cotizaciones").select("*").order("id", desc=True).limit(5).execute()
+        # Ver últimos 10 pendientes de cualquier usuario
+        res = supabase.table("cotizaciones").select("*").neq("estado", "✅ Pagado").limit(10).execute()
+        if not res.data:
+            await query.message.reply_text("No hay pendientes.")
+            return
         for v in res.data:
-            info = f"🆔 `{v['id']}` | 👤 `{v['user_id']}`\n📍 {v['estado']} | 💰 {v['monto']}\n📝 {v['pedido_completo']}"
+            info = f"🆔 `{v['id']}` | 👤 `{v['user_id']}`\n📍 {v['estado']}\n📝 {v['pedido_completo']}"
             await context.bot.send_message(ADMIN_CHAT_ID, info, parse_mode="Markdown")
 
 # --- 6. EJECUCIÓN ---
@@ -177,5 +198,4 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    # drop_pending_updates=True es vital para que Render no choque con instancias viejas
     app.run_polling(drop_pending_updates=True)
