@@ -25,8 +25,8 @@ BOT_TOKEN = "8509475938:AAEYZ13VLaoFicGMTV5_LmATUyPAM8sSD7c"
 ADMIN_CHAT_ID = 7721918273
 
 # REEMPLAZA ESTO CON TUS DATOS DE SUPABASE
-SUPABASE_URL = "https://tu_proyecto.supabase.co"
-SUPABASE_KEY = "tu_anon_key_aqui"
+SUPABASE_URL = "https://jrixqynovxufwtbgdwvp.supabase.co"
+SUPABASE_KEY = "sb_publishable_5k4ZxazSf4ahoQ3jaR_uKA_mEbTxzJB"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -220,3 +220,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
