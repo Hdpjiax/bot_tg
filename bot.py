@@ -26,11 +26,20 @@ logging.basicConfig(level=logging.INFO)
 # --- SERVIDOR WEB (FLASK) ---
 app_web = Flask(__name__)
 
+@app_web.route('/')
+def home():
+    return "Bot Operativo. Accede a /dashboard para administrar."
+
 @app_web.route('/dashboard')
 def dashboard():
-    # Corregido: desc=False en lugar de asc=True para evitar el error de Supabase
-    res = supabase.table("cotizaciones").select("*").order("created_at", desc=True).execute()
-    return render_template('dashboard.html', vuelos=res.data)
+    try:
+        # Simplificamos la consulta para evitar errores de columnas inexistentes
+        res = supabase.table("cotizaciones").select("*").execute()
+        # Ordenamos manualmente en Python si la DB da problemas con created_at
+        vuelos_sorted = sorted(res.data, key=lambda x: x.get('id', 0), reverse=True)
+        return render_template('dashboard.html', vuelos=vuelos_sorted)
+    except Exception as e:
+        return f"Error en Dashboard: {str(e)}"
 
 @app_web.route('/accion/web_cotizar', methods=['POST'])
 def web_cotizar():
@@ -40,11 +49,9 @@ def web_cotizar():
     
     if res.data:
         uid = res.data[0]['user_id']
-        # Notificación al usuario sin Markdown complejo para evitar errores de parseo
-        asyncio.run_coroutine_threadsafe(
-            bot_app.bot.send_message(uid, f"💰 Su vuelo ID {v_id} ha sido cotizado.\nMonto: {monto}\n\nYa puede enviar su pago."),
-            bot_app.loop
-        )
+        # Usamos texto plano para evitar el error "Can't parse entities"
+        msj = f"💰 Su vuelo ID {v_id} ha sido cotizado.\nMonto: {monto}\n\nYa puede enviar su pago."
+        asyncio.run_coroutine_threadsafe(bot_app.bot.send_message(uid, msj), bot_app.loop)
     return redirect(url_for('dashboard'))
 
 @app_web.route('/accion/web_confirmar/<v_id>')
@@ -52,10 +59,8 @@ def web_confirmar(v_id):
     res = supabase.table("cotizaciones").update({"estado": "Pago Confirmado"}).eq("id", v_id).execute()
     if res.data:
         uid = res.data[0]['user_id']
-        asyncio.run_coroutine_threadsafe(
-            bot_app.bot.send_message(uid, f"✅ Pago Confirmado\nSu pago para el ID {v_id} ha sido validado."),
-            bot_app.loop
-        )
+        msj = f"✅ Pago Confirmado. Su pago para el ID {v_id} ha sido validado correctamente."
+        asyncio.run_coroutine_threadsafe(bot_app.bot.send_message(uid, msj), bot_app.loop)
     return redirect(url_for('dashboard'))
 
 # --- LÓGICA DEL BOT ---
@@ -68,19 +73,19 @@ def get_user_keyboard():
     ], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "✈️ Bienvenido al Sistema de Vuelos Pro",
-        reply_markup=get_user_keyboard()
-    )
+    await update.message.reply_text("✈️ Bienvenido al Sistema de Vuelos", reply_markup=get_user_keyboard())
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid, texto, udata = update.effective_user.id, update.message.text, context.user_data
 
     if texto == "📜 Mis Pedidos":
-        res = supabase.table("cotizaciones").select("*").eq("user_id", str(uid)).order("created_at", desc=True).execute()
-        msj = "📜 TUS PEDIDOS\n\n"
+        res = supabase.table("cotizaciones").select("*").eq("user_id", str(uid)).execute()
+        if not res.data:
+            await update.message.reply_text("No tienes pedidos registrados.")
+            return
+        msj = "📜 TUS PEDIDOS:\n"
         for v in res.data:
-            msj += f"🆔 {v['id']} | {v['estado']} | {v.get('monto','-')}\n"
+            msj += f"- ID {v['id']}: {v['estado']} (${v.get('monto','--')})\n"
         await update.message.reply_text(msj)
 
     elif texto == "📝 Datos de vuelo":
@@ -89,15 +94,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif texto == "📸 Enviar Pago":
         udata["estado"] = "usr_esp_id_pago"
-        await update.message.reply_text("Escribe el ID del vuelo:")
+        await update.message.reply_text("Escribe el ID del vuelo a pagar:")
 
     elif udata.get("estado") == "usr_esp_datos":
         udata["tmp_datos"], udata["estado"] = texto, "usr_esp_foto"
-        await update.message.reply_text("Envía imagen de referencia:")
+        await update.message.reply_text("Envía una imagen de referencia de tu vuelo:")
 
     elif udata.get("estado") == "usr_esp_id_pago":
         udata["pago_vuelo_id"], udata["estado"] = texto, "usr_esp_comprobante"
-        await update.message.reply_text("Envía captura del pago:")
+        await update.message.reply_text(f"ID {texto} seleccionado. Envía la captura de tu pago:")
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo: return
@@ -109,41 +114,33 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "pedido_completo": udata["tmp_datos"], "estado": "Esperando atención"
         }).execute()
         v_id = res.data[0]['id']
-        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"🔔 NUEVA SOLICITUD ID: {v_id}\nInfo: {udata['tmp_datos']}")
+        await update.message.reply_text(f"✅ Registrado. ID: {v_id}")
+        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"NUEVA SOLICITUD ID {v_id}\nInfo: {udata['tmp_datos']}")
         udata.clear()
 
     elif udata.get("estado") == "usr_esp_comprobante":
         v_id = udata["pago_vuelo_id"]
-        supabase.table("cotizaciones").update({"estado": "Esperando confirmación de pago"}).eq("id", v_id).execute()
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"Confirmar Pago {v_id} ✅", callback_data=f"conf_pago_{v_id}")]])
-        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"💰 PAGO RECIBIDO ID: {v_id}", reply_markup=btn)
+        supabase.table("cotizaciones").update({"estado": "Esperando confirmación"}).eq("id", v_id).execute()
+        await update.message.reply_text("✅ Comprobante enviado. Revisaremos en breve.")
+        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"PAGO RECIBIDO ID {v_id}")
         udata.clear()
 
-async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data.startswith("conf_pago_"):
-        v_id = query.data.split("_")[2]
-        res = supabase.table("cotizaciones").update({"estado": "Pago Confirmado"}).eq("id", v_id).execute()
-        await context.bot.send_message(res.data[0]['user_id'], f"✅ Pago ID {v_id} confirmado.")
-        await query.edit_message_caption(caption=f"✅ Pago ID {v_id} Confirmado")
+# --- ARRANQUE ---
 
 def run_flask():
-    # Correr Flask en puerto dinámico para Render
     app_web.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 
 if __name__ == "__main__":
-    # 1. Configurar aplicación del Bot
+    # Creamos la aplicación del bot
     bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
     
-    # 2. Registrar Handlers (Corregido: Al final para evitar NameError)
+    # Registramos los comandos y mensajes
     bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(CallbackQueryHandler(callbacks))
     bot_app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    # 3. Iniciar Flask en hilo secundario
+    # Hilo para Flask (Dashboard)
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # 4. Iniciar Bot (run_polling es el método final)
+    # Iniciamos el Bot
     bot_app.run_polling()
