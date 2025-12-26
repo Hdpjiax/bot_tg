@@ -232,14 +232,13 @@ def main():
     if __name__ == '__main__':
         try:
             keep_alive()  # Esto ya funciona y mantiene vivo el bot
-             print("Servidor web iniciado...")
             print("Servidor web iniciado...")
-            application.run_polling()
+            print("Servidor web iniciado...")
+            app.run_polling()
         except Exception as e:
             print(f"Error al arrancar: {e}")
 if __name__ == "__main__":
     main()
-
 
 
 
