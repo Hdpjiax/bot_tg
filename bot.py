@@ -6,7 +6,7 @@ from flask import Flask
 from supabase import create_client, Client
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+    ReplyKeyboardMarkup, KeyboardButton
 )
 from telegram.ext import (
     ApplicationBuilder, ContextTypes, CommandHandler,
@@ -59,6 +59,13 @@ def get_date_range():
 
 # --- 5. LÓGICA DE USUARIO ---
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "✈️ **Sistema de Gestión de Vuelos**\nBienvenido. Selecciona una opción del menú:",
+        reply_markup=get_user_keyboard(),
+        parse_mode="Markdown"
+    )
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     texto = update.message.text
@@ -72,10 +79,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         udata["estado"] = "usr_esperando_id_pago"
         await update.message.reply_text("Escribe el **ID del vuelo**:")
 
-    # ... (Resto de botones de usuario igual que antes)
-
     elif udata.get("estado") == "usr_esperando_datos":
-        # Intentamos extraer la fecha si el usuario la pone
         udata["tmp_datos"] = texto
         udata["estado"] = "usr_esperando_foto_vuelo"
         await update.message.reply_text("✅ Recibido. Envía la imagen de referencia.")
@@ -85,78 +89,71 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if udata.get("adm_estado") == "adm_esp_id_qr":
             udata["target_id_qr"] = texto
             udata["adm_estado"] = "adm_enviando_qrs"
-            await update.message.reply_text(f"✅ ID `{texto}` seleccionado.\nEnvía las fotos (individual o álbum). Las enviaré con el formato: Instrucciones -> QRs -> Disfruta.")
+            await update.message.reply_text(f"✅ ID `{texto}` seleccionado.\nEnvía las fotos. Formato: Instrucciones -> QRs -> Disfruta.")
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    username = f"@{update.effective_user.username}" if update.effective_user.username else "Sin Username"
     udata = context.user_data
     
-    # Manejo de fotos (incluyendo álbumes/MediaGroups)
     if update.message.photo:
         fid = update.message.photo[-1].file_id
 
-        # 1. Registro de Vuelo
+        # 1. Registro de Vuelo (Notificación al Admin con datos copiables)
         if udata.get("estado") == "usr_esperando_foto_vuelo":
-            # Guardamos datos incluyendo la fecha si se detecta
             res = supabase.table("cotizaciones").insert({
                 "user_id": uid, "username": update.effective_user.username,
                 "pedido_completo": udata.get('tmp_datos'),
                 "estado": "Esperando atención"
             }).execute()
-            await update.message.reply_text(f"✅ Enviado (ID: `{res.data[0]['id']}`).")
-            await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=f"🔔 **NUEVA SOLICITUD**\nID: `{res.data[0]['id']}`\nInfo: {udata.get('tmp_datos')}")
+            v_id = res.data[0]['id']
+            
+            await update.message.reply_text(f"✅ Enviado (ID: `{v_id}`).")
+            
+            # Mensaje para Admin con ID y User copiables
+            caption_admin = (
+                f"🔔 **NUEVA SOLICITUD**\n\n"
+                f"🆔 ID Vuelo: `{v_id}`\n"
+                f"👤 Usuario: `{username}`\n"
+                f"🔑 ID Telegram: `{uid}`\n"
+                f"📝 Info: {udata.get('tmp_datos')}"
+            )
+            await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=caption_admin, parse_mode="Markdown")
             udata.clear()
 
-       # 2. Comprobante de Pago
+        # 2. Comprobante de Pago (Notificación al Admin con datos copiables)
         elif udata.get("estado") == "usr_esperando_comprobante":
             v_id = udata.get("pago_id")
-            # Aplicando tu instrucción: si no hay texto, poner 'comprobante'
             caption_text = "comprobante" if not update.message.caption else update.message.caption
             
             supabase.table("cotizaciones").update({"estado": "Esperando confirmación"}).eq("id", v_id).execute()
-            await update.message.reply_text(f"✅ Comprobante enviado para el ID `{v_id}`.")
+            await update.message.reply_text(f"✅ Comprobante de pago recibido.")
             
-            # Botón de confirmación rápida y ID copiable para el Admin
-            btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar Pago ✅", callback_data=f"conf_direct_{v_id}")]])
-            await context.bot.send_photo(
-                ADMIN_CHAT_ID, 
-                fid, 
-                caption=f"💰 **PAGO RECIBIDO**\n\n"
-                        f"🆔 ID Vuelo: `{v_id}` (Copiable)\n"
-                        f"👤 Usuario: `{uid}`\n"
-                        f"💬 Nota: {caption_text}", 
-                reply_markup=btn,
-                parse_mode="Markdown"
+            btn = InlineKeyboardMarkup([[InlineKeyboardButton("Confirmar ✅", callback_data=f"conf_direct_{v_id}")]])
+            
+            caption_admin_pago = (
+                f"💰 **PAGO RECIBIDO**\n\n"
+                f"🆔 ID Vuelo: `{v_id}`\n"
+                f"👤 Usuario: `{username}`\n"
+                f"🔑 ID Telegram: `{uid}`\n"
+                f"💬 Nota: {caption_text}"
             )
+            await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=caption_admin_pago, reply_markup=btn, parse_mode="Markdown")
             udata.clear()
 
-        # 3. Admin enviando QRs (FLUJO: Instrucciones -> Foto -> Disfruta)
+        # 3. Admin enviando QRs
         elif uid == ADMIN_CHAT_ID and udata.get("adm_estado") == "adm_enviando_qrs":
             v_id = udata.get("target_id_qr")
             res = supabase.table("cotizaciones").select("user_id").eq("id", v_id).single().execute()
-            u_id = res.data["user_id"]
+            target_uid = res.data["user_id"]
 
-            # 1. Enviar Instrucciones
-            instrucciones = "✈️ **INSTRUCCIONES DE SEGURIDAD**\n- No agregar a la app.\n- No revisar el vuelo antes de tiempo.\n- Solo validación 2h antes."
-            await context.bot.send_message(u_id, instrucciones, parse_mode="Markdown")
-            
-            # 2. Enviar el QR (Foto)
-            await context.bot.send_photo(u_id, fid)
-            
-            # 3. Enviar mensaje final
-            await context.bot.send_message(u_id, "🎫 **¡Disfruta tu vuelo!**")
+            await context.bot.send_message(target_uid, "✈️ **INSTRUCCIONES DE SEGURIDAD**\n- No agregar a la app.\n- No revisar el vuelo.\n- Validación 2h antes.", parse_mode="Markdown")
+            await context.bot.send_photo(target_uid, fid)
+            await context.bot.send_message(target_uid, "🎫 **¡Disfruta tu vuelo!**")
             
             supabase.table("cotizaciones").update({"estado": "QR Enviados"}).eq("id", v_id).execute()
             await update.message.reply_text("✅ QR enviado con éxito.")
-# --- 5. LÓGICA DE USUARIO ---
 
-# ESTA FUNCIÓN ES LA QUE FALTABA DEFINIR:
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "✈️ **Sistema de Gestión de Vuelos**\nBienvenido. Selecciona una opción del menú:",
-        reply_markup=get_user_keyboard(),
-        parse_mode="Markdown"
-    )
 # --- 6. CALLBACKS ADMIN ---
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,45 +161,25 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if update.effective_user.id != ADMIN_CHAT_ID: return
 
-    # --- BOTÓN PENDIENTES ---
     if query.data == "adm_pend":
-        res = supabase.table("cotizaciones").select("*")\
-            .filter("estado", "in", '("Cotizado", "Pago Confirmado", "Esperando confirmación")')\
-            .execute()
-        
+        res = supabase.table("cotizaciones").select("*").filter("estado", "in", '("Cotizado", "Pago Confirmado", "Esperando confirmación")').execute()
         if not res.data:
-            await query.message.reply_text("No hay pendientes urgentes.")
+            await query.message.reply_text("No hay pendientes.")
             return
 
         msj = "⏳ **PRÓXIMOS PENDIENTES**\n\n"
         for v in res.data:
-            # Datos formateados para ser copiables
-            msj += (f"🆔 ID Vuelo: `{v['id']}`\n"
-                    f"👤 User ID: `{v['user_id']}`\n"
-                    f"👤 @{v['username']}\n"
-                    f"📍 Estado: {v['estado']}\n"
-                    f"📝 Info: {v['pedido_completo']}\n\n"
-                    f"-------------------\n")
+            u_link = f"@{v['username']}" if v['username'] else "Sin User"
+            msj += f"🆔 `{v['id']}` | 👤 `{u_link}` | ID: `{v['user_id']}`\n📍 Est: {v['estado']}\n\n"
         await query.message.reply_text(msj, parse_mode="Markdown")
 
-    # --- BOTÓN HISTORIAL TOTAL ---
     elif query.data == "adm_his":
         res = supabase.table("cotizaciones").select("*").order("id", desc=True).limit(20).execute()
         msj = "📜 **HISTORIAL RECIENTE**\n\n"
         for v in res.data:
-            msj += (f"🆔 ID Vuelo: `{v['id']}`\n"
-                    f"👤 User ID: `{v['user_id']}`\n"
-                    f"👤 Username: `@{v['username']}`\n"
-                    f"📝 Info: {v['pedido_completo']}\n"
-                    f"✅ Estado: {v['estado']}\n"
-                    f"-------------------\n")
-        
-        if len(msj) > 4000:
-            await query.message.reply_text(msj[:4000], parse_mode="Markdown")
-        else:
-            await query.message.reply_text(msj, parse_mode="Markdown")
-
-    # ... (Resto de callbacks: adm_cot, adm_qr, etc.)
+            u_link = f"@{v['username']}" if v['username'] else "Sin User"
+            msj += f"🆔 ID: `{v['id']}`\n👤 User: `{u_link}`\n🔑 ID: `{v['user_id']}`\n✅ Estado: {v['estado']}\n---\n"
+        await query.message.reply_text(msj, parse_mode="Markdown")
 
 # --- 7. ARRANQUE ---
 
@@ -215,4 +192,3 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.run_polling()
-
