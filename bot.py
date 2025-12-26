@@ -20,6 +20,7 @@ def home():
     return "Bot Online 🚀"
 
 def run_server():
+    # Render usa el puerto 10000 por defecto
     port = int(os.environ.get("PORT", 10000))
     app_web.run(host='0.0.0.0', port=port)
 
@@ -37,7 +38,8 @@ logging.basicConfig(level=logging.INFO)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     teclado = ReplyKeyboardMarkup([
         [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
-        [KeyboardButton("📜 Mi Historial"), KeyboardButton("🏦 Datos de Pago")]
+        [KeyboardButton("📜 Mi Historial"), KeyboardButton("🏦 Datos de Pago")],
+        [KeyboardButton("🖼 Enviar QR")]
     ], resize_keyboard=True)
     await update.message.reply_text("✈️ **Gestor de Vuelos** activo.\nUsa el menú para navegar:", reply_markup=teclado, parse_mode="Markdown")
 
@@ -54,7 +56,8 @@ async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✈️ **Pedido:** {v['pedido_completo']}\n"
                 f"💰 **Monto:** {v['monto']}\n"
                 f"📍 **Estado:** {v['estado']}")
-        # Botón de borrado para el historial
+        
+        # Botón para borrar el vuelo desde el historial
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🗑️ Borrar este vuelo", callback_data=f"del_{v['id']}")]])
         await update.message.reply_text(info, reply_markup=btn, parse_mode="Markdown")
 
@@ -63,6 +66,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_data = context.user_data
 
+    # Menú de Usuario
     if texto == "📝 Datos de vuelo":
         user_data["esperando"] = "texto_vuelo"
         await update.message.reply_text("Escribe los detalles de tu vuelo (Origen, Destino, Fecha):")
@@ -70,8 +74,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_historial(update, context)
     elif texto == "🏦 Datos de Pago":
         await update.message.reply_text("🏦 **BBVA**\nCLABE: `012180015886058959`\nTitular: Antonio Garcia", parse_mode="Markdown")
+    elif texto == "🖼 Enviar QR":
+        await update.message.reply_text("Envía la imagen de tu código QR:")
     
-    # --- Lógica de Admin (Cotizar y Confirmar) ---
+    # --- Lógica de Administración (Cotizar y Confirmar) ---
     elif user_data.get("esperando") == "admin_id_cotizar":
         user_data["cotizar_id"] = texto
         user_data["esperando"] = "admin_monto"
@@ -108,6 +114,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = f"@{update.effective_user.username}" or update.effective_user.first_name
     file_id = update.message.photo[-1].file_id
 
+    # Si el usuario manda imagen sin texto previo, se toma como comprobante [cite: 2025-12-24]
     detalles = context.user_data.get("temp_text", "comprobante")
     estado = "Pagado (Revisión)" if detalles == "comprobante" else "Esperando Pago"
 
@@ -119,7 +126,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         v_id = res.data[0]['id']
         await context.bot.send_photo(ADMIN_CHAT_ID, file_id, 
-                                   caption=f"🔔 **NUEVO REGISTRO**\nID: {v_id}\nUsuario: {user_name}\nDetalles: {detalles}")
+                                   caption=f"🔔 **NUEVA ACCIÓN**\nID: {v_id}\nUsuario: {user_name}\nAcción: {detalles}")
         await update.message.reply_text(f"✅ Registrado con ID: {v_id}\nEstado: {estado}")
         context.user_data.clear()
     except Exception as e:
@@ -139,14 +146,16 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    # Manejo de borrado desde el historial
     if query.data.startswith("del_"):
         v_id = query.data.split("_")[1]
         try:
             supabase.table("cotizaciones").delete().eq("id", v_id).execute()
-            await query.edit_message_text(f"🗑️ Registro ID {v_id} eliminado de la base de datos.")
+            await query.edit_message_text(f"🗑️ Registro ID {v_id} eliminado con éxito.")
         except Exception as e:
             await query.edit_message_text(f"❌ Error al eliminar: {e}")
 
+    # Acciones de Administrador
     if update.effective_user.id == ADMIN_CHAT_ID:
         if query.data == "admin_cotizar":
             context.user_data["esperando"] = "admin_id_cotizar"
@@ -155,10 +164,10 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["esperando"] = "admin_id_confirmar"
             await query.message.reply_text("Escribe el **ID** del vuelo para marcarlo como PAGADO:")
 
-# --- 5. ARRANQUE DEL BOT ---
+# --- 5. ARRANQUE ---
 
 if __name__ == "__main__":
-    # Iniciar servidor para Cron-job
+    # Servidor para evitar que el servicio se duerma
     threading.Thread(target=run_server).start() 
     
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -170,6 +179,6 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    # drop_pending_updates evita errores de conflicto al reiniciar
-    print("Bot activo...")
+    # drop_pending_updates soluciona conflictos de múltiples instancias
+    print("Bot en marcha...")
     app.run_polling(drop_pending_updates=True)
