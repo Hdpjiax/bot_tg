@@ -68,7 +68,7 @@ def get_user_keyboard():
         [KeyboardButton("🆘 Soporte")]
     ], resize_keyboard=True)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     await update.message.reply_text("✈️ **Bienvenido al Sistema de Vuelos**", reply_markup=get_user_keyboard())
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,7 +96,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         udata["pago_vuelo_id"], udata["estado"] = texto, "usr_esp_comprobante"
         await update.message.reply_text("Envía captura del pago:")
 
-async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_media(update, context):
     udata, fid, uid = context.user_data, update.message.photo[-1].file_id, update.effective_user.id
     
     if udata.get("estado") == "usr_esp_foto":
@@ -116,7 +116,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("conf_pago_"):
         v_id = query.data.split("_")[2]
         res = supabase.table("cotizaciones").update({"estado": "Pago Confirmado"}).eq("id", v_id).execute()
-        await context.bot.send_message(res.data[0]['user_id'], f"✅ Pago ID {v_id} confirmado.")
+        await context.bot.send_photo(ADMIN_CHAT_ID, fid, caption=cap) # Quitar Markdown si da error
         await query.edit_message_caption("✅ Confirmado")
 
 def run_flask():
@@ -127,7 +127,8 @@ if __name__ == "__main__":
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CallbackQueryHandler(callbacks))
     bot_app.add_handler(MessageHandler(filters.PHOTO, handle_media))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     threading.Thread(target=run_flask).start()
+    app.add_handler(CommandHandler("start", start))
     bot_app.run_polling()
+
