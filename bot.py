@@ -18,6 +18,7 @@ from telegram.ext import (
 
 # --- 1. SERVIDOR KEEP-ALIVE ---
 app_web = Flask('')
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "bf3145e6595577f099e00638d96e4405b24bb0cd17f6908d34b065943b97dd27")
 
 @app_web.route('/')
 def home():
@@ -311,3 +312,4 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.PHOTO, handle_media))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.run_polling()
+
