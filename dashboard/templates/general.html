@@ -1,5 +1,42 @@
-<div class="container py-4">
-  <div class="row g-3">
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard Vuelos Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CSS CDN -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+    crossorigin="anonymous"
+  >
+
+  <!-- Tu CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-semibold" href="{{ url_for('general') }}">
+      Vuelos Pro · Dashboard
+    </a>
+    <div class="navbar-nav">
+      <a class="nav-link" href="{{ url_for('por_cotizar') }}">Por cotizar</a>
+      <a class="nav-link" href="{{ url_for('validar_pagos') }}">Validar pagos</a>
+      <a class="nav-link" href="{{ url_for('por_enviar_qr') }}">Por enviar QR</a>
+      <a class="nav-link" href="{{ url_for('proximos_vuelos') }}">Próximos vuelos</a>
+      <a class="nav-link" href="{{ url_for('historial') }}">Historial</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-3">
+
+  <!-- BANNERS -->
+  <div class="row g-3 mb-4">
     <div class="col-md-4">
       <div class="card text-bg-primary shadow-sm">
         <div class="card-body">
@@ -21,48 +58,13 @@
     <div class="col-md-4">
       <div class="card text-bg-warning shadow-sm">
         <div class="card-body">
-          <h6 class="card-title text-uppercase small mb-1">Urgentes hoy ({{ hoy }})</h6>
+          <h6 class="card-title text-uppercase small mb-1">
+            Urgentes hoy ({{ hoy }})
+          </h6>
           <h2 class="mb-0">{{ urgentes|length }}</h2>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="row g-3 mt-4">
-    <div class="col-12">
-      <div class="card shadow-sm">
-        <div class="card-header">
-          Vuelos urgentes (por confirmar pago / enviar QR)
-        </div>
-        <div class="card-body p-0">
-          <table class="table mb-0 table-hover align-middle">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Usuario</th>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for v in urgentes %}
-              <tr>
-                <td>{{ v.id }}</td>
-                <td>@{{ v.username }}</td>
-                <td>{{ v.fecha }}</td>
-                <td>{{ v.estado }}</td>
-                <td>{{ v.monto or '-' }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="5" class="text-center py-3">Sin vuelos urgentes para hoy.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+  <!-- TABLA UR
