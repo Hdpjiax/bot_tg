@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, redirect, url_for, flash
-from supabase import create_client, Client
+from supabase_py import create_client, Client
 from telegram import Bot
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
