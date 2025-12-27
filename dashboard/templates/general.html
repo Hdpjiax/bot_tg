@@ -50,7 +50,9 @@
       <tr>
         <td>{{ v.id }}</td>
         <td>@{{ v.username }}</td>
-        <td>{{ v.fecha }}</td>
+        <td>
+        {{ v.fecha[:10].split('-')[2] }}-{{ v.fecha[:10].split('-')[1] }}-{{ v.fecha[:10].split('-')[0] }}
+        </td>
         <td>{{ v.estado }}</td>
         <td>{{ v.monto or '-' }}</td>
         <td>{{ v.created_at }}</td>
