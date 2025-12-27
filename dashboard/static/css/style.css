@@ -25,7 +25,6 @@ html, body {
 }
 
 /* Layout principal */
-
 .layout {
   min-height: 100vh;
   display: grid;
@@ -34,7 +33,6 @@ html, body {
 }
 
 /* Sidebar */
-
 .sidebar {
   padding: 18px 16px;
   border-right: 1px solid rgba(15, 23, 42, 0.8);
@@ -94,7 +92,6 @@ html, body {
 }
 
 /* Contenido */
-
 .content {
   padding: 18px 20px 22px;
   display: flex;
@@ -132,8 +129,7 @@ html, body {
   margin-top: 4px;
 }
 
-/* Tarjetas y tablas */
-
+/* Tarjetas y tablas genéricas */
 .card {
   padding: 14px 16px 18px;
   animation: fade-in 0.35s ease-out;
@@ -181,7 +177,6 @@ tbody tr:hover {
 }
 
 /* Formularios inline */
-
 .inline-form {
   display: flex;
   align-items: center;
@@ -207,7 +202,6 @@ tbody tr:hover {
 }
 
 /* Botones */
-
 button {
   border: none;
   border-radius: 999px;
@@ -248,7 +242,6 @@ button:hover {
 }
 
 /* Mensajes flash */
-
 .flash-container {
   margin-bottom: 10px;
 }
@@ -271,14 +264,12 @@ button:hover {
 }
 
 /* Etiquetas pequeñas */
-
 .tag-muted {
   font-size: 0.78rem;
   color: var(--text-muted);
 }
 
 /* Animaciones */
-
 .fade-in {
   animation: fade-in 0.4s ease-out;
 }
@@ -288,8 +279,99 @@ button:hover {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Responsivo básico */
+/* --------- ESTILOS ESPECÍFICOS GENERAL (BANNERS + PANEL) --------- */
 
+/* Fila de banners */
+.cards-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.info-card {
+  flex: 1 1 200px;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.info-card--blue {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+.info-card--green {
+  background: linear-gradient(135deg, #059669, #16a34a);
+}
+
+.info-card--yellow {
+  background: linear-gradient(135deg, #eab308, #f97316);
+}
+
+.info-card__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #e5e7eb;
+  margin-bottom: 4px;
+}
+
+.info-card__value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Panel de urgentes */
+.panel {
+  border-radius: 18px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  padding: 14px 16px;
+}
+
+.panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.panel__title {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.panel__subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.panel__empty {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+/* Tabla compacta para el panel */
+.table--compact {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.table--compact th,
+.table--compact td {
+  padding: 7px 8px;
+}
+
+/* Responsivo básico */
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
