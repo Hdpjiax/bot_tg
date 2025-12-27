@@ -1,6 +1,8 @@
 import os
 import threading
 from datetime import datetime, timedelta
+import re
+import logging
 
 from flask import (
     Flask, render_template, request,
@@ -8,26 +10,27 @@ from flask import (
 )
 from supabase import create_client, Client
 from telegram import (
-    Bot, InputMediaPhoto,
-    Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, KeyboardButton
+    Bot, InputMediaPhoto, Update,
+    InlineKeyboardMarkup, InlineKeyboardButton
 )
 from telegram.ext import (
-    ApplicationBuilder, ContextTypes,
-    CommandHandler, MessageHandler, CallbackQueryHandler,
-    filters
+    ApplicationBuilder, CommandHandler,
+    MessageHandler, CallbackQueryHandler,
+    ContextTypes, filters
 )
 
-# ----------------- CONFIG COMÚN -----------------
+# ----------------- CONFIG GENERAL -----------------
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "7721918273"))
+SOPORTE_USER = os.getenv("SOPORTE_USER", "@TuUsuarioSoporte")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+logging.basicConfig(level=logging.INFO)
 
-# Bot síncrono para usar desde Flask
+# Bot síncrono para usar desde Flask (dashboard)
 bot_sync = Bot(token=BOT_TOKEN)
 
 # ----------------- FLASK APP (DASHBOARD) -----------------
@@ -42,7 +45,7 @@ def rango_proximos():
     return hoy, hasta
 
 
-# ===== GENERAL / ESTADÍSTICAS =====
+# ---------- GENERAL / ESTADÍSTICAS ----------
 
 @app.route("/")
 def general():
@@ -83,7 +86,7 @@ def general():
     )
 
 
-# ===== POR COTIZAR =====
+# ---------- POR COTIZAR ----------
 
 @app.route("/por-cotizar")
 def por_cotizar():
@@ -142,7 +145,7 @@ def accion_cotizar():
     return redirect(url_for("por_cotizar"))
 
 
-# ===== VALIDAR PAGOS =====
+# ---------- VALIDAR PAGOS ----------
 
 @app.route("/validar-pagos")
 def validar_pagos():
@@ -199,7 +202,7 @@ def accion_confirmar_pago():
     return redirect(url_for("validar_pagos"))
 
 
-# ===== POR ENVIAR QR =====
+# ---------- POR ENVIAR QR ----------
 
 @app.route("/por-enviar-qr")
 def por_enviar_qr():
@@ -285,7 +288,7 @@ def accion_enviar_qr():
     return redirect(url_for("por_enviar_qr"))
 
 
-# ===== PRÓXIMOS VUELOS =====
+# ---------- PRÓXIMOS VUELOS & HISTORIAL ----------
 
 @app.route("/proximos-vuelos")
 def proximos_vuelos():
@@ -302,8 +305,6 @@ def proximos_vuelos():
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
 
-# ===== HISTORIAL =====
-
 @app.route("/historial")
 def historial():
     vuelos = (
@@ -317,9 +318,25 @@ def historial():
     return render_template("historial.html", vuelos=vuelos)
 
 
-# ----------------- BOT TELEGRAM (ASÍNCRONO) -----------------
+# ----------------- LÓGICA DEL BOT (USUARIO) -----------------
+# (Recortado para mantenerlo simple, pero sigue tu flujo actual)
 
-def get_user_keyboard():
+DATE_PATTERN = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
+
+def extraer_fecha(texto: str):
+    m = DATE_PATTERN.search(texto)
+    if not m:
+        return None
+    d, mth, y = m.groups()
+    try:
+        dt = datetime(int(y), int(mth), int(d))
+        return dt.date().isoformat()
+    except ValueError:
+        return None
+
+
+def user_keyboard():
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
@@ -331,35 +348,224 @@ def get_user_keyboard():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "✈️ Bienvenido al Sistema de Vuelos\nUsa el menú para iniciar.",
-        reply_markup=get_user_keyboard(),
+        "✈️ Bienvenido al Sistema de Vuelos.\nUsa el menú para iniciar.",
+        reply_markup=user_keyboard(),
     )
 
-# … aquí reusas todo tu código del bot (handlers de texto, fotos, callbacks) …
-# lo mismo que ya tenías en bot_telegram.py, pero pegado debajo,
-# usando la misma tabla "cotizaciones" y supabase.
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    texto = update.message.text
+    udata = context.user_data
+
+    if uid == ADMIN_CHAT_ID:
+        await update.message.reply_text("El panel de administración está en la web.")
+        return
+
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+
+    if texto == "📝 Datos de vuelo":
+        udata.clear()
+        udata["estado"] = "usr_esperando_datos"
+        await update.message.reply_text(
+            "Escribe Origen, Destino y Fecha.\n"
+            "Ejemplo: CDMX a Cancún el 25-12-2025."
+        )
+        return
+
+    if texto == "📸 Enviar Pago":
+        udata.clear()
+        udata["estado"] = "usr_esperando_id_pago"
+        await update.message.reply_text("Escribe el ID del vuelo que vas a pagar.")
+        return
+
+    if texto == "🆘 Soporte":
+        btn = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(
+                "Contactar Soporte 💬",
+                url=f"https://t.me/{SOPORTE_USER.replace('@','')}"
+            )]]
+        )
+        await update.message.reply_text("Pulsa para hablar con soporte:", reply_markup=btn)
+        return
+
+    if udata.get("estado") == "usr_esperando_datos":
+        udata["tmp_datos"] = texto
+        udata["tmp_fecha"] = extraer_fecha(texto)
+        udata["estado"] = "usr_esperando_foto_vuelo"
+        await update.message.reply_text(
+            "Ahora envía una imagen del vuelo (captura o referencia)."
+        )
+        return
+
+    if udata.get("estado") == "usr_esperando_id_pago":
+        v_id = texto.strip()
+        res = (
+            supabase.table("cotizaciones")
+            .select("monto, estado")
+            .eq("id", v_id)
+            .single()
+            .execute()
+        )
+        if not res.data:
+            await update.message.reply_text("❌ ID no encontrado.")
+            return
+        monto = res.data.get("monto")
+        if not monto:
+            await update.message.reply_text(
+                "⚠️ Ese vuelo aún no tiene monto. Espera a que sea cotizado."
+            )
+            return
+
+        udata["pago_vuelo_id"] = v_id
+        udata["estado"] = "usr_esperando_comprobante"
+
+        texto_msj = (
+            f"💳 ID de vuelo: {v_id}\n"
+            f"💰 Monto a pagar: {monto}\n\n"
+            "🏦 Datos de Pago\n"
+            "Banco: BBVA\n"
+            "CLABE: 012180015886058959\n"
+            "Titular: Antonio Garcia\n\n"
+            "Ahora envía la captura del pago como foto."
+        )
+        await update.message.reply_text(texto_msj)
+        return
+
+    await update.message.reply_text(
+        "Usa el menú para continuar.", reply_markup=user_keyboard()
+    )
+
+
+async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    udata = context.user_data
+
+    if uid == ADMIN_CHAT_ID:
+        return
+    if not update.message.photo:
+        return
+
+    fid = update.message.photo[-1].file_id
+
+    # Nueva cotización
+    if udata.get("estado") == "usr_esperando_foto_vuelo":
+        fecha = udata.get("tmp_fecha")
+        res = (
+            supabase.table("cotizaciones")
+            .insert(
+                {
+                    "user_id": str(uid),
+                    "username": update.effective_user.username or "SinUser",
+                    "pedido_completo": udata.get("tmp_datos"),
+                    "estado": "Esperando atención",
+                    "monto": None,
+                    "fecha": fecha,
+                }
+            )
+            .execute()
+        )
+        v_id = res.data[0]["id"]
+        await update.message.reply_text(
+            f"✅ Cotización recibida.\n"
+            f"ID de vuelo: {v_id}\n"
+            "Un agente revisará tu solicitud y te enviará el monto."
+        )
+
+        await context.bot.send_photo(
+            ADMIN_CHAT_ID,
+            fid,
+            caption=(
+                "🔔 NUEVA SOLICITUD DE COTIZACIÓN\n"
+                f"ID: {v_id}\n"
+                f"User: @{update.effective_user.username}\n"
+                f"Info: {udata.get('tmp_datos')}"
+            ),
+        )
+        udata.clear()
+        return
+
+    # Comprobante de pago
+    if udata.get("estado") == "usr_esperando_comprobante":
+        v_id = udata.get("pago_vuelo_id")
+
+        supabase.table("cotizaciones").update(
+            {"estado": "Esperando confirmación de pago"}
+        ).eq("id", v_id).execute()
+
+        await update.message.reply_text(
+            "✅ Comprobante enviado. Tu pago está en revisión."
+        )
+
+        btn = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(
+                f"Confirmar Pago ID {v_id} ✅",
+                callback_data=f"conf_pago_{v_id}",
+            )]]
+        )
+
+        await context.bot.send_photo(
+            ADMIN_CHAT_ID,
+            fid,
+            caption=(
+                "💰 COMPROBANTE DE PAGO RECIBIDO\n"
+                f"ID Vuelo: `{v_id}`\n"
+                f"User: @{update.effective_user.username}"
+            ),
+            reply_markup=btn,
+            parse_mode="Markdown",
+        )
+        udata.clear()
+
+
+async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+
+    if query.data.startswith("conf_pago_"):
+        v_id = query.data.split("_")[2]
+
+        res = (
+            supabase.table("cotizaciones")
+            .update({"estado": "Pago Confirmado"})
+            .eq("id", v_id)
+            .execute()
+        )
+
+        if not res.data:
+            await query.message.reply_text("No se encontró el vuelo.")
+            return
+
+        user_id = int(res.data[0]["user_id"])
+        await context.bot.send_message(
+            user_id,
+            f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
+            "En breve recibirás tus códigos QR."
+        )
+        await query.edit_message_caption(
+            caption=f"✅ PAGO CONFIRMADO\nID Vuelo: {v_id}"
+        )
+
+
+# ----------------- ARRANQUE DEL BOT EN UN HILO -----------------
 
 def run_bot():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
-
     application.add_handler(CommandHandler("start", start))
-    # agrega aquí el resto de tus handlers:
-    # application.add_handler(MessageHandler(...))
-    # application.add_handler(CallbackQueryHandler(...))
-
+    application.add_handler(CallbackQueryHandler(callbacks))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_media))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.run_polling()
 
 
-# ----------------- ENTRYPOINT -----------------
-
-def start_bot_thread():
-    t = threading.Thread(target=run_bot, daemon=True)
-    t.start()
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
 
 
-start_bot_thread()  # arranca el bot cuando se importa main
-
+# ----------------- MAIN LOCAL (para tests) -----------------
 
 if __name__ == "__main__":
-    # Para desarrollo local (en Render se usará gunicorn main:app)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), debug=True)
