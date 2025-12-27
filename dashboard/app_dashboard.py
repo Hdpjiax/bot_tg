@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+import requests
 
 from flask import (
     Flask, render_template, request,
@@ -28,13 +29,32 @@ def rango_proximos():
 
 
 def enviar_mensaje(chat_id: int, texto: str):
-    """Enviar mensaje al usuario; levanta excepción si falla."""
-    bot.send_message(chat_id=chat_id, text=texto)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {"chat_id": chat_id, "text": texto}
+    r = requests.post(url, data=data, timeout=10)
+    r.raise_for_status()
 
 
 def enviar_media_group(chat_id: int, media):
-    """Enviar álbum de fotos."""
-    bot.send_media_group(chat_id=chat_id, media=media)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMediaGroup"
+    files = {}
+    payload = []
+
+    for idx, m in enumerate(media):
+        field = f"photo{idx}"
+        files[field] = (m.media.filename, m.media.stream, "image/jpeg")
+        payload.append(
+            {
+                "type": "photo",
+                "media": f"attach://{field}",
+                "caption": m.caption or "",
+            }
+        )
+
+    data = {"chat_id": chat_id, "media": json.dumps(payload)}
+    r = requests.post(url, data=data, files=files, timeout=20)
+    r.raise_for_status()
+
 
 
 # ----------------- GENERAL / ESTADÍSTICAS -----------------
@@ -42,15 +62,13 @@ def enviar_media_group(chat_id: int, media):
 def general():
     hoy = datetime.utcnow().date()
 
-    # Usuarios únicos (activos)
     res_usuarios = (
         supabase.table("cotizaciones")
-        .select("user_id", count="exact")
+        .select("user_id", count="exact", head=True)
         .execute()
     )
     usuarios_unicos = res_usuarios.count or 0
 
-    # Total recaudado (pagos confirmados + QR enviados)
     res_total = (
         supabase.table("cotizaciones")
         .select("monto")
@@ -59,6 +77,24 @@ def general():
         .data
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
+
+    urgentes = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("fecha", str(hoy))
+        .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    return render_template(
+        "general.html",
+        usuarios_unicos=usuarios_unicos,
+        total_recaudado=total_recaudado,
+        urgentes=urgentes,
+        hoy=hoy,
+    )
 
     # Vuelos urgentes por atender hoy
     urgentes_hoy = (
