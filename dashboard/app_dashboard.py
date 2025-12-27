@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 import requests
+import json
 
 from flask import (
     Flask, render_template, request,
@@ -33,27 +34,14 @@ def enviar_mensaje(chat_id: int, texto: str):
     data = {"chat_id": chat_id, "text": texto}
     r = requests.post(url, data=data, timeout=10)
     r.raise_for_status()
-
-
-def enviar_media_group(chat_id: int, media):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMediaGroup"
-    files = {}
-    payload = []
-
-    for idx, m in enumerate(media):
-        field = f"photo{idx}"
-        files[field] = (m.media.filename, m.media.stream, "image/jpeg")
-        payload.append(
-            {
-                "type": "photo",
-                "media": f"attach://{field}",
-                "caption": m.caption or "",
-            }
-        )
-
-    data = {"chat_id": chat_id, "media": json.dumps(payload)}
+    
+def enviar_foto(chat_id: int, fileobj, caption: str = ""):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    files = {"photo": (fileobj.filename, fileobj.stream, fileobj.mimetype)}
+    data = {"chat_id": chat_id, "caption": caption}
     r = requests.post(url, data=data, files=files, timeout=20)
     r.raise_for_status()
+
 
 
 
@@ -233,19 +221,6 @@ def accion_confirmar_pago():
 
 # ----------------- POR ENVIAR QR -----------------
 
-@app.route("/por-enviar-qr")
-def por_enviar_qr():
-    pendientes = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("estado", "Pago Confirmado")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-    return render_template("por_enviar_qr.html", vuelos=pendientes)
-
-
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
     v_id = request.form.get("id")
@@ -291,18 +266,14 @@ def accion_enviar_qr():
         "llegar al aeropuerto y escanear directamente."
     )
 
-    media_group = []
-    for idx, f in enumerate(fotos):
-        media_group.append(
-            InputMediaPhoto(
-                f,
-                caption=f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
-            )
-        )
-
     try:
         enviar_mensaje(user_id, instrucciones)
-        enviar_media_group(user_id, media_group)
+
+        # mandar cada foto una por una
+        for idx, f in enumerate(fotos):
+            caption = f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
+            enviar_foto(user_id, f, caption=caption)
+
         enviar_mensaje(user_id, "🎉 Disfruta tu vuelo.")
 
         supabase.table("cotizaciones").update(
@@ -315,7 +286,6 @@ def accion_enviar_qr():
         flash("No se pudieron enviar los QRs al usuario.", "error")
 
     return redirect(url_for("por_enviar_qr"))
-
 
 # ----------------- PRÓXIMOS VUELOS -----------------
 
