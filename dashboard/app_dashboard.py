@@ -27,19 +27,58 @@ def rango_proximos():
 # --- SECCIÓN GENERAL / RESUMEN ---
 
 @app.route("/")
+@app.route("/")
 def general():
-    hoy, hasta = rango_proximos()
+    hoy = datetime.utcnow().date()
 
+    # Últimos vuelos para la tabla
     vuelos = (
         supabase.table("cotizaciones")
         .select("*")
         .order("created_at", desc=True)
-        .limit(100)
+        .limit(20)
         .execute()
         .data
     )
 
-    return render_template("general.html", vuelos=vuelos)
+    # Usuarios únicos
+    res_usuarios = (
+        supabase.table("cotizaciones")
+        .select("user_id", count="exact")
+        .execute()
+    )
+    usuarios_unicos = res_usuarios.count or 0
+
+    # Monto total recaudado (solo pagos confirmados o QR enviados)
+    res_total = (
+        supabase.table("cotizaciones")
+        .select("monto")
+        .in_("estado", ["Pago Confirmado", "QR Enviados"])
+        .execute()
+        .data
+    )
+    total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
+
+    # Vuelos urgentes hoy (pendientes críticos)
+    urgentes_hoy = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("fecha", str(hoy))
+        .in_("estado", ["Pago Confirmado", "Esperando confirmación de pago"])
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    return render_template(
+        "general.html",
+        vuelos=vuelos,
+        usuarios_unicos=usuarios_unicos,
+        total_recaudado=total_recaudado,
+        urgentes_hoy=urgentes_hoy,
+        hoy=hoy,
+    )
+
 
 
 # --- SECCIÓN POR COTIZAR ---
