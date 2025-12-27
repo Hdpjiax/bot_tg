@@ -203,6 +203,19 @@ def accion_confirmar_pago():
 
     return redirect(url_for("validar_pagos"))
 
+# ----------------- POR ENVIAR QR -----------------
+
+@app.route("/por-enviar-qr")
+def por_enviar_qr():
+    pendientes = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Pago Confirmado")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    return render_template("por_enviar_qr.html", vuelos=pendientes)
 
 # ----------------- POR ENVIAR QR -----------------
 
