@@ -64,7 +64,7 @@ def general():
 
     res_usuarios = (
         supabase.table("cotizaciones")
-        .select("user_id", count="exact", head=True)
+        .select("username", count="exact", head=True)
         .execute()
     )
     usuarios_unicos = res_usuarios.count or 0
