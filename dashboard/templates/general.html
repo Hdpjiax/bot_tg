@@ -1,10 +1,58 @@
 {% extends "base.html" %}
 
 {% block titulo %}Resumen general{% endblock %}
-{% block subtitulo %}Gestiona y monitorea todos tus despachos en tiempo real.{% endblock %}
+{% block subtitulo %}Visión rápida del estado actual del sistema.{% endblock %}
 
 {% block contenido %}
-<div class="card glass">
+<div class="cards-row">
+  <div class="stat-card glass">
+    <div class="stat-label">Usuarios únicos</div>
+    <div class="stat-value">{{ usuarios_unicos }}</div>
+    <div class="stat-foot">Registrados con alguna cotización</div>
+  </div>
+
+  <div class="stat-card glass">
+    <div class="stat-label">Monto total recaudado</div>
+    <div class="stat-value">$ {{ "%.2f"|format(total_recaudado) }}</div>
+    <div class="stat-foot">Pagos confirmados y QR enviados</div>
+  </div>
+
+  <div class="stat-card glass">
+    <div class="stat-label">Vuelos urgentes hoy</div>
+    <div class="stat-value">{{ urgentes_hoy|length }}</div>
+    <div class="stat-foot">Fecha {{ hoy }}</div>
+  </div>
+</div>
+
+<div class="card glass" style="margin-top:14px;">
+  <h2>Vuelos urgentes del día</h2>
+  {% if urgentes_hoy %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Estado</th>
+          <th>Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in urgentes_hoy %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>@{{ v.username }}</td>
+          <td>{{ v.estado }}</td>
+          <td>{{ v.monto or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos urgentes para hoy.</p>
+  {% endif %}
+</div>
+
+<div class="card glass" style="margin-top:14px;">
   <h2>Últimos vuelos</h2>
   {% if vuelos %}
     <table>
