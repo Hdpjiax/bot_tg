@@ -1,12 +1,9 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="page-header">
-  <h1>General / Estadísticas</h1>
-  <p>Resumen de usuarios, recaudación y vuelos urgentes del día.</p>
-</div>
+{% block titulo %}General / Estadísticas{% endblock %}
+{% block subtitulo %}Resumen de usuarios, recaudación y vuelos urgentes del día.{% endblock %}
 
-<!-- BANNERS -->
+{% block contenido %}
 <div class="cards-row">
   <div class="info-card info-card--blue">
     <div class="info-card__label">Usuarios únicos</div>
@@ -26,7 +23,6 @@
   </div>
 </div>
 
-<!-- PANEL URGENTES -->
 <div class="panel">
   <div class="panel__header">
     <div>
