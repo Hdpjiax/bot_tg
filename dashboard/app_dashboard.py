@@ -1,30 +1,37 @@
 import os
 from datetime import datetime, timedelta
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import (
+    Flask, render_template, request,
+    redirect, url_for, flash, jsonify
+)
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
 
+# --- CONFIGURACIÓN ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = 7721918273
+ADMIN_CHAT_ID = 7721918273  # mismo id que en el bot
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
 
-def get_rango_fechas():
+def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
     return hoy, hasta
 
 
+# --- DASHBOARD PRINCIPAL (todas las secciones) ---
+
 @app.route("/")
 def dashboard():
+    # Pendientes de cotización
     pendientes_cot = (
         supabase.table("cotizaciones")
         .select("*")
@@ -34,6 +41,7 @@ def dashboard():
         .data
     )
 
+    # Pendientes de pago (ya cotizados y con comprobante enviado)
     pendientes_pago = (
         supabase.table("cotizaciones")
         .select("*")
@@ -43,7 +51,18 @@ def dashboard():
         .data
     )
 
-    hoy, hasta = get_rango_fechas()
+    # Pendientes de confirmación de pago (solo los que ya tienen comprobante)
+    pendientes_confirmar = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Esperando confirmación de pago")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    # Próximos vuelos (1–5 días)
+    hoy, hasta = rango_proximos()
     proximos = (
         supabase.table("cotizaciones")
         .select("*")
@@ -54,11 +73,12 @@ def dashboard():
         .data
     )
 
+    # Historial
     historial = (
         supabase.table("cotizaciones")
         .select("*")
         .order("created_at", desc=True)
-        .limit(200)
+        .limit(300)
         .execute()
         .data
     )
@@ -67,15 +87,16 @@ def dashboard():
         "dashboard.html",
         pendientes_cot=pendientes_cot,
         pendientes_pago=pendientes_pago,
+        pendientes_confirmar=pendientes_confirmar,
         proximos=proximos,
         historial=historial,
     )
 
 
-# --- COTIZAR DESDE EL DASHBOARD ---
+# --- ACCIÓN: COTIZAR VUELO ---
 
-@app.route("/cotizar", methods=["POST"])
-def cotizar():
+@app.route("/accion/cotizar", methods=["POST"])
+def accion_cotizar():
     v_id = request.form.get("id")
     monto = request.form.get("monto")
 
@@ -98,7 +119,8 @@ def cotizar():
 
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto: {monto}\n\nUsa el botón '📸 Enviar Pago' para subir tu comprobante."
+        f"Monto: {monto}\n\n"
+        "Usa el botón '📸 Enviar Pago' en el bot para subir tu comprobante."
     )
 
     try:
@@ -110,10 +132,10 @@ def cotizar():
     return redirect(url_for("dashboard"))
 
 
-# --- CONFIRMAR PAGO DESDE DASHBOARD (SIN USAR BOTÓN TELEGRAM) ---
+# --- ACCIÓN: CONFIRMAR PAGO ---
 
-@app.route("/confirmar_pago", methods=["POST"])
-def confirmar_pago():
+@app.route("/accion/confirmar_pago", methods=["POST"])
+def accion_confirmar_pago():
     v_id = request.form.get("id")
     if not v_id:
         flash("Falta ID.", "error")
@@ -134,7 +156,7 @@ def confirmar_pago():
 
     texto = (
         f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
-        f"En breve recibirás tus códigos QR."
+        "En breve recibirás tus códigos QR."
     )
 
     try:
@@ -146,18 +168,20 @@ def confirmar_pago():
     return redirect(url_for("dashboard"))
 
 
-# --- ENVIAR QRs DESDE DASHBOARD ---
+# --- ACCIÓN: ENVIAR QRs (MODAL + FOTOS) ---
 
-@app.route("/enviar_qr", methods=["POST"])
-def enviar_qr():
+@app.route("/accion/enviar_qr", methods=["POST"])
+def accion_enviar_qr():
     """
-    Este endpoint asume que ya tienes guardados en algún sitio los file_id de los QRs
-    o que usas otro flujo para subirlos. Si los subes desde otro panel,
-    aquí solo se marca el estado y se envía el mensaje de instrucciones.
+    Recibe:
+    - id: id de vuelo
+    - Se permiten múltiples archivos 'fotos' (Input type="file" multiple)
     """
     v_id = request.form.get("id")
+    fotos = request.files.getlist("fotos")
+
     if not v_id:
-        flash("Falta ID.", "error")
+        flash("Falta ID de vuelo.", "error")
         return redirect(url_for("dashboard"))
 
     # Obtener usuario
@@ -175,7 +199,20 @@ def enviar_qr():
 
     user_id = res.data["user_id"]
 
-    # Mensaje de instrucciones
+    if not fotos or fotos[0].filename == "":
+        flash("No se adjuntaron imágenes de QR.", "error")
+        return redirect(url_for("dashboard"))
+
+    media_group = []
+    for idx, f in enumerate(fotos):
+        # Telegram acepta file-like objects
+        media_group.append(
+            InputMediaPhoto(
+                f,
+                caption=f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
+            )
+        )
+
     instrucciones = (
         f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
         "Instrucciones para evitar caídas:\n"
@@ -189,21 +226,83 @@ def enviar_qr():
     )
 
     try:
+        # Enviar instrucciones primero
         bot.send_message(chat_id=user_id, text=instrucciones)
+        # Enviar álbum con QRs
+        bot.send_media_group(chat_id=user_id, media=media_group)
+        # Mensaje final
+        bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
 
-        # Aquí podrías mandar un media_group con los QRs si tienes sus file_id
-        # bot.send_media_group(chat_id=user_id, media=[InputMediaPhoto(file_id1), ...])
-
+        # Actualizar estado en Supabase
         supabase.table("cotizaciones").update(
             {"estado": "QR Enviados"}
         ).eq("id", v_id).execute()
 
-        bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
         flash("QRs enviados y estado actualizado a 'QR Enviados'.", "success")
     except Exception as e:
-        flash(f"Error al enviar QRs o actualizar estado: {e}", "error")
+        flash(f"Error al enviar QRs: {e}", "error")
 
     return redirect(url_for("dashboard"))
+
+
+# --- API SENCILLA PARA REFRESCAR TABLAS (AJAX) ---
+
+@app.route("/api/resumen")
+def api_resumen():
+    pendientes_cot = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Esperando atención")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    pendientes_pago = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .in_("estado", ["Cotizado", "Esperando confirmación de pago"])
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    pendientes_confirmar = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Esperando confirmación de pago")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    hoy, hasta = rango_proximos()
+    proximos = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .gte("fecha", str(hoy))
+        .lte("fecha", str(hasta))
+        .order("fecha", desc=False)
+        .execute()
+        .data
+    )
+
+    historial = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(300)
+        .execute()
+        .data
+    )
+
+    return jsonify(
+        pendientes_cot=pendientes_cot,
+        pendientes_pago=pendientes_pago,
+        pendientes_confirmar=pendientes_confirmar,
+        proximos=proximos,
+        historial=historial,
+    )
 
 
 if __name__ == "__main__":
