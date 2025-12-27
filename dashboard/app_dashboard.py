@@ -15,8 +15,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto_en_produccion")
-
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
 
 # --- HELPERS ---
 
