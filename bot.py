@@ -71,8 +71,7 @@ def get_admin_keyboard():
 # --- 4. UTILIDAD: EXTRAER FECHA DEL TEXTO ---
 
 # Acepta formatos tipo 25-12-2025 o 25/12/2025 (día-mes-año)
-DATE_PATTERN = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")  [web:76][web:80]
-
+DATE_PATTERN = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
 
 def extraer_fecha(texto: str):
     """
@@ -417,6 +416,7 @@ if __name__ == "__main__":
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
     app.run_polling()
+
 
 
 
