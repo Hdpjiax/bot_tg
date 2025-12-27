@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from supabase import create_client, Client
-from telegram import Bot
+from telegram import Bot, InputMediaPhoto
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -32,16 +32,16 @@ def dashboard():
         .order("created_at", desc=True)
         .execute()
         .data
-    )  [web:58]
+    )
 
     pendientes_pago = (
         supabase.table("cotizaciones")
         .select("*")
-        .in_("estado", ["Cotizado", "Esperando confirmación"])
+        .in_("estado", ["Cotizado", "Esperando confirmación de pago"])
         .order("created_at", desc=True)
         .execute()
         .data
-    )  [web:58][web:63]
+    )
 
     hoy, hasta = get_rango_fechas()
     proximos = (
@@ -52,7 +52,7 @@ def dashboard():
         .order("fecha", desc=False)
         .execute()
         .data
-    )  [web:63][web:69]
+    )
 
     historial = (
         supabase.table("cotizaciones")
@@ -61,7 +61,7 @@ def dashboard():
         .limit(200)
         .execute()
         .data
-    )  [web:58]
+    )
 
     return render_template(
         "dashboard.html",
@@ -71,6 +71,8 @@ def dashboard():
         historial=historial,
     )
 
+
+# --- COTIZAR DESDE EL DASHBOARD ---
 
 @app.route("/cotizar", methods=["POST"])
 def cotizar():
@@ -86,26 +88,29 @@ def cotizar():
         .update({"monto": monto, "estado": "Cotizado"})
         .eq("id", v_id)
         .execute()
-    )  [web:92]
+    )
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("dashboard"))
 
     user_id = res.data[0]["user_id"]
+
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto: {monto}\n\nUsa el botón 'Enviar Pago' para finalizar."
+        f"Monto: {monto}\n\nUsa el botón '📸 Enviar Pago' para subir tu comprobante."
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)  [web:4]
+        bot.send_message(chat_id=user_id, text=texto)
         flash("Cotización enviada y usuario notificado.", "success")
     except Exception as e:
         flash(f"Cotización actualizada, pero error al notificar: {e}", "error")
 
     return redirect(url_for("dashboard"))
 
+
+# --- CONFIRMAR PAGO DESDE DASHBOARD (SIN USAR BOTÓN TELEGRAM) ---
 
 @app.route("/confirmar_pago", methods=["POST"])
 def confirmar_pago():
@@ -119,20 +124,21 @@ def confirmar_pago():
         .update({"estado": "Pago Confirmado"})
         .eq("id", v_id)
         .execute()
-    )  [web:92]
+    )
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("dashboard"))
 
     user_id = res.data[0]["user_id"]
+
     texto = (
-        f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado. "
-        f"En breve recibirás tus pases."
+        f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
+        f"En breve recibirás tus códigos QR."
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)  [web:4]
+        bot.send_message(chat_id=user_id, text=texto)
         flash("Pago confirmado y usuario notificado.", "success")
     except Exception as e:
         flash(f"Pago confirmado, pero error al notificar: {e}", "error")
@@ -140,25 +146,63 @@ def confirmar_pago():
     return redirect(url_for("dashboard"))
 
 
-@app.route("/marcar_qr_enviado", methods=["POST"])
-def marcar_qr_enviado():
+# --- ENVIAR QRs DESDE DASHBOARD ---
+
+@app.route("/enviar_qr", methods=["POST"])
+def enviar_qr():
+    """
+    Este endpoint asume que ya tienes guardados en algún sitio los file_id de los QRs
+    o que usas otro flujo para subirlos. Si los subes desde otro panel,
+    aquí solo se marca el estado y se envía el mensaje de instrucciones.
+    """
     v_id = request.form.get("id")
     if not v_id:
         flash("Falta ID.", "error")
         return redirect(url_for("dashboard"))
 
+    # Obtener usuario
     res = (
         supabase.table("cotizaciones")
-        .update({"estado": "QR Enviados"})
+        .select("user_id")
         .eq("id", v_id)
+        .single()
         .execute()
-    )  [web:92]
+    )
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("dashboard"))
 
-    flash("Estado actualizado a 'QR Enviados'.", "success")
+    user_id = res.data["user_id"]
+
+    # Mensaje de instrucciones
+    instrucciones = (
+        f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
+        "Instrucciones para evitar caídas:\n"
+        "- No agregar el pase a la app de la aerolínea.\n"
+        "- No revisar el vuelo en la app; solo, si se requiere, "
+        "se confirma 2 horas antes del abordaje.\n"
+        "- En caso de caída, se saca un vuelo en el horario siguiente "
+        "(ejemplo: salida 3pm, se reacomoda 5–6pm).\n"
+        "- Solo deja guardada la foto de tu pase en tu galería para "
+        "llegar al aeropuerto y escanear directamente."
+    )
+
+    try:
+        bot.send_message(chat_id=user_id, text=instrucciones)
+
+        # Aquí podrías mandar un media_group con los QRs si tienes sus file_id
+        # bot.send_media_group(chat_id=user_id, media=[InputMediaPhoto(file_id1), ...])
+
+        supabase.table("cotizaciones").update(
+            {"estado": "QR Enviados"}
+        ).eq("id", v_id).execute()
+
+        bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
+        flash("QRs enviados y estado actualizado a 'QR Enviados'.", "success")
+    except Exception as e:
+        flash(f"Error al enviar QRs o actualizar estado: {e}", "error")
+
     return redirect(url_for("dashboard"))
 
 
