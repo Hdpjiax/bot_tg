@@ -81,18 +81,18 @@ def accion_cotizar():
 
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto: {monto}\n\n"
-        "Usa el botón '📸 Enviar Pago' en el bot para subir tu comprobante."
+        f"Monto a pagar: {monto}\n\n"
+        "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)
+        bot.send_message(chat_id=int(user_id), text=texto)
         flash("Cotización enviada y usuario notificado.", "success")
     except Exception as e:
-        flash(f"Cotización actualizada, pero error al notificar: {e}", "error")
+        app.logger.error(f"Error al enviar cotización a Telegram: {e}")
+        flash("Cotización guardada pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("por_cotizar"))
-
 
 # --- SECCIÓN VALIDAR PAGOS (Esperando confirmación) ---
 
@@ -136,12 +136,14 @@ def accion_confirmar_pago():
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)
+        bot.send_message(chat_id=int(user_id), text=texto)
         flash("Pago confirmado y usuario notificado.", "success")
     except Exception as e:
-        flash(f"Pago confirmado, pero error al notificar: {e}", "error")
+        app.logger.error(f"Error al enviar notificación de pago: {e}")
+        flash("Pago confirmado pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("validar_pagos"))
+
 
 
 # --- SECCIÓN POR ENVIAR QR (Pago Confirmado) ---
@@ -186,15 +188,6 @@ def accion_enviar_qr():
         flash("Adjunta al menos una imagen de QR.", "error")
         return redirect(url_for("por_enviar_qr"))
 
-    media_group = []
-    for idx, f in enumerate(fotos):
-        media_group.append(
-            InputMediaPhoto(
-                f,
-                caption=f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
-            )
-        )
-
     instrucciones = (
         f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
         "Instrucciones para evitar caídas:\n"
@@ -207,21 +200,35 @@ def accion_enviar_qr():
         "llegar al aeropuerto y escanear directamente."
     )
 
-    try:
-        bot.send_message(chat_id=user_id, text=instrucciones)
-        bot.send_media_group(chat_id=user_id, media=media_group)
-        bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
+    # Construir media group a partir de los archivos subidos
+    media_group = []
+    for idx, f in enumerate(fotos):
+        media_group.append(
+            InputMediaPhoto(
+                f,
+                caption=f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
+            )
+        )
 
+    try:
+        # Mensaje de instrucciones
+        bot.send_message(chat_id=int(user_id), text=instrucciones)
+        # Álbum con los QRs
+        bot.send_media_group(chat_id=int(user_id), media=media_group)
+        # Mensaje final
+        bot.send_message(chat_id=int(user_id), text="🎉 Disfruta tu vuelo.")
+
+        # Actualizar estado
         supabase.table("cotizaciones").update(
             {"estado": "QR Enviados"}
         ).eq("id", v_id).execute()
 
         flash("QRs enviados y estado actualizado a 'QR Enviados'.", "success")
     except Exception as e:
-        flash(f"Error al enviar QRs o actualizar estado: {e}", "error")
+        app.logger.error(f"Error al enviar QRs a Telegram: {e}")
+        flash("No se pudieron enviar los QRs al usuario.", "error")
 
     return redirect(url_for("por_enviar_qr"))
-
 
 # --- SECCIÓN PRÓXIMOS VUELOS ---
 
