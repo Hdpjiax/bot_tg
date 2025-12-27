@@ -49,6 +49,7 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
 @app.route("/")
 def general():
     hoy = datetime.utcnow().date()
+    manana = hoy + timedelta(days=1)
 
     res_usuarios = (
         supabase.table("cotizaciones")
@@ -66,15 +67,18 @@ def general():
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
 
+  # urgentes hoy y mañana
     urgentes = (
         supabase.table("cotizaciones")
         .select("*")
-        .eq("fecha", str(hoy))
+        .gte("fecha", str(hoy))
+        .lte("fecha", str(manana))
         .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
+        .order("fecha", desc=False)
         .order("created_at", desc=True)
         .execute()
         .data
-    )
+    )  
 
     return render_template(
         "general.html",
