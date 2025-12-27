@@ -3,16 +3,14 @@ from datetime import datetime, timedelta
 
 from flask import (
     Flask, render_template, request,
-    redirect, url_for, flash, jsonify
+    redirect, url_for, flash
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
 
-# --- CONFIGURACIÓN ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = 7721918273  # mismo id que en el bot
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
@@ -20,19 +18,35 @@ bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
-
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
     return hoy, hasta
 
 
-# --- DASHBOARD PRINCIPAL (todas las secciones) ---
+# --- SECCIÓN GENERAL / RESUMEN ---
 
 @app.route("/")
-def dashboard():
-    # Pendientes de cotización
-    pendientes_cot = (
+def general():
+    hoy, hasta = rango_proximos()
+
+    vuelos = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+        .data
+    )
+
+    return render_template("general.html", vuelos=vuelos)
+
+
+# --- SECCIÓN POR COTIZAR ---
+
+@app.route("/por-cotizar")
+def por_cotizar():
+    pendientes = (
         supabase.table("cotizaciones")
         .select("*")
         .eq("estado", "Esperando atención")
@@ -40,60 +54,8 @@ def dashboard():
         .execute()
         .data
     )
+    return render_template("por_cotizar.html", vuelos=pendientes)
 
-    # Pendientes de pago (ya cotizados y con comprobante enviado)
-    pendientes_pago = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .in_("estado", ["Cotizado", "Esperando confirmación de pago"])
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
-    # Pendientes de confirmación de pago (solo los que ya tienen comprobante)
-    pendientes_confirmar = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("estado", "Esperando confirmación de pago")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
-    # Próximos vuelos (1–5 días)
-    hoy, hasta = rango_proximos()
-    proximos = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .gte("fecha", str(hoy))
-        .lte("fecha", str(hasta))
-        .order("fecha", desc=False)
-        .execute()
-        .data
-    )
-
-    # Historial
-    historial = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(300)
-        .execute()
-        .data
-    )
-
-    return render_template(
-        "dashboard.html",
-        pendientes_cot=pendientes_cot,
-        pendientes_pago=pendientes_pago,
-        pendientes_confirmar=pendientes_confirmar,
-        proximos=proximos,
-        historial=historial,
-    )
-
-
-# --- ACCIÓN: COTIZAR VUELO ---
 
 @app.route("/accion/cotizar", methods=["POST"])
 def accion_cotizar():
@@ -102,7 +64,7 @@ def accion_cotizar():
 
     if not v_id or not monto:
         flash("Falta ID o monto.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("por_cotizar"))
 
     res = (
         supabase.table("cotizaciones")
@@ -113,7 +75,7 @@ def accion_cotizar():
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("por_cotizar"))
 
     user_id = res.data[0]["user_id"]
 
@@ -129,17 +91,31 @@ def accion_cotizar():
     except Exception as e:
         flash(f"Cotización actualizada, pero error al notificar: {e}", "error")
 
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("por_cotizar"))
 
 
-# --- ACCIÓN: CONFIRMAR PAGO ---
+# --- SECCIÓN VALIDAR PAGOS (Esperando confirmación) ---
+
+@app.route("/validar-pagos")
+def validar_pagos():
+    pendientes = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Esperando confirmación de pago")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    return render_template("validar_pagos.html", vuelos=pendientes)
+
 
 @app.route("/accion/confirmar_pago", methods=["POST"])
 def accion_confirmar_pago():
     v_id = request.form.get("id")
+
     if not v_id:
         flash("Falta ID.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("validar_pagos"))
 
     res = (
         supabase.table("cotizaciones")
@@ -150,7 +126,7 @@ def accion_confirmar_pago():
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("validar_pagos"))
 
     user_id = res.data[0]["user_id"]
 
@@ -165,26 +141,33 @@ def accion_confirmar_pago():
     except Exception as e:
         flash(f"Pago confirmado, pero error al notificar: {e}", "error")
 
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("validar_pagos"))
 
 
-# --- ACCIÓN: ENVIAR QRs (MODAL + FOTOS) ---
+# --- SECCIÓN POR ENVIAR QR (Pago Confirmado) ---
+
+@app.route("/por-enviar-qr")
+def por_enviar_qr():
+    pendientes = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("estado", "Pago Confirmado")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    return render_template("por_enviar_qr.html", vuelos=pendientes)
+
 
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
-    """
-    Recibe:
-    - id: id de vuelo
-    - Se permiten múltiples archivos 'fotos' (Input type="file" multiple)
-    """
     v_id = request.form.get("id")
     fotos = request.files.getlist("fotos")
 
     if not v_id:
         flash("Falta ID de vuelo.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("por_enviar_qr"))
 
-    # Obtener usuario
     res = (
         supabase.table("cotizaciones")
         .select("user_id")
@@ -195,17 +178,16 @@ def accion_enviar_qr():
 
     if not res.data:
         flash("No se encontró el vuelo.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("por_enviar_qr"))
 
     user_id = res.data["user_id"]
 
     if not fotos or fotos[0].filename == "":
-        flash("No se adjuntaron imágenes de QR.", "error")
-        return redirect(url_for("dashboard"))
+        flash("Adjunta al menos una imagen de QR.", "error")
+        return redirect(url_for("por_enviar_qr"))
 
     media_group = []
     for idx, f in enumerate(fotos):
-        # Telegram acepta file-like objects
         media_group.append(
             InputMediaPhoto(
                 f,
@@ -217,65 +199,34 @@ def accion_enviar_qr():
         f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
         "Instrucciones para evitar caídas:\n"
         "- No agregar el pase a la app de la aerolínea.\n"
-        "- No revisar el vuelo en la app; solo, si se requiere, "
-        "se confirma 2 horas antes del abordaje.\n"
-        "- En caso de caída, se saca un vuelo en el horario siguiente "
+        "- No revisar el vuelo, solo si se requiere se confirma "
+        "2 horas antes del abordaje.\n"
+        "- En caso de caída se sacaría un vuelo en el horario siguiente "
         "(ejemplo: salida 3pm, se reacomoda 5–6pm).\n"
         "- Solo deja guardada la foto de tu pase en tu galería para "
         "llegar al aeropuerto y escanear directamente."
     )
 
     try:
-        # Enviar instrucciones primero
         bot.send_message(chat_id=user_id, text=instrucciones)
-        # Enviar álbum con QRs
         bot.send_media_group(chat_id=user_id, media=media_group)
-        # Mensaje final
         bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
 
-        # Actualizar estado en Supabase
         supabase.table("cotizaciones").update(
             {"estado": "QR Enviados"}
         ).eq("id", v_id).execute()
 
         flash("QRs enviados y estado actualizado a 'QR Enviados'.", "success")
     except Exception as e:
-        flash(f"Error al enviar QRs: {e}", "error")
+        flash(f"Error al enviar QRs o actualizar estado: {e}", "error")
 
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("por_enviar_qr"))
 
 
-# --- API SENCILLA PARA REFRESCAR TABLAS (AJAX) ---
+# --- SECCIÓN PRÓXIMOS VUELOS ---
 
-@app.route("/api/resumen")
-def api_resumen():
-    pendientes_cot = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("estado", "Esperando atención")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
-    pendientes_pago = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .in_("estado", ["Cotizado", "Esperando confirmación de pago"])
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
-    pendientes_confirmar = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("estado", "Esperando confirmación de pago")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
+@app.route("/proximos-vuelos")
+def proximos_vuelos():
     hoy, hasta = rango_proximos()
     proximos = (
         supabase.table("cotizaciones")
@@ -286,8 +237,14 @@ def api_resumen():
         .execute()
         .data
     )
+    return render_template("proximos_vuelos.html", vuelos=proximos)
 
-    historial = (
+
+# --- SECCIÓN HISTORIAL ---
+
+@app.route("/historial")
+def historial():
+    vuelos = (
         supabase.table("cotizaciones")
         .select("*")
         .order("created_at", desc=True)
@@ -295,14 +252,7 @@ def api_resumen():
         .execute()
         .data
     )
-
-    return jsonify(
-        pendientes_cot=pendientes_cot,
-        pendientes_pago=pendientes_pago,
-        pendientes_confirmar=pendientes_confirmar,
-        proximos=proximos,
-        historial=historial,
-    )
+    return render_template("historial.html", vuelos=vuelos)
 
 
 if __name__ == "__main__":
