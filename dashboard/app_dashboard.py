@@ -88,25 +88,6 @@ def general():
         hoy=hoy,
     )
 
-    # Vuelos urgentes por atender hoy
-    urgentes_hoy = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .eq("fecha", str(hoy))
-        .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    )
-
-    return render_template(
-        "general.html",
-        usuarios_unicos=usuarios_unicos,
-        total_recaudado=total_recaudado,
-        urgentes_hoy=urgentes_hoy,
-        hoy=hoy,
-    )
-
 # ----------------- POR COTIZAR -----------------
 
 @app.route("/por-cotizar")
