@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 
 from flask import Flask
-from supabase import create_client, Client
+from supabase_py import create_client, Client
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
@@ -417,4 +417,5 @@ if __name__ == "__main__":
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
     app.run_polling()
+
 
