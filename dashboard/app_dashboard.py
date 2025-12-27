@@ -38,22 +38,11 @@ def enviar_media_group(chat_id: int, media):
 
 
 # ----------------- GENERAL / ESTADÍSTICAS -----------------
-
 @app.route("/")
 def general():
     hoy = datetime.utcnow().date()
 
-    # Últimos vuelos
-    vuelos = (
-        supabase.table("cotizaciones")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(20)
-        .execute()
-        .data
-    )
-
-    # Usuarios únicos
+    # Usuarios únicos (activos)
     res_usuarios = (
         supabase.table("cotizaciones")
         .select("user_id", count="exact")
@@ -61,7 +50,7 @@ def general():
     )
     usuarios_unicos = res_usuarios.count or 0
 
-    # Total recaudado (Pago Confirmado + QR Enviados)
+    # Total recaudado (pagos confirmados + QR enviados)
     res_total = (
         supabase.table("cotizaciones")
         .select("monto")
@@ -71,12 +60,12 @@ def general():
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
 
-    # Vuelos urgentes hoy (Pago Confirmado o Esperando confirmación)
+    # Vuelos urgentes por atender hoy
     urgentes_hoy = (
         supabase.table("cotizaciones")
         .select("*")
         .eq("fecha", str(hoy))
-        .in_("estado", ["Pago Confirmado", "Esperando confirmación de pago"])
+        .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
         .order("created_at", desc=True)
         .execute()
         .data
@@ -84,13 +73,11 @@ def general():
 
     return render_template(
         "general.html",
-        vuelos=vuelos,
         usuarios_unicos=usuarios_unicos,
         total_recaudado=total_recaudado,
         urgentes_hoy=urgentes_hoy,
         hoy=hoy,
     )
-
 
 # ----------------- POR COTIZAR -----------------
 
