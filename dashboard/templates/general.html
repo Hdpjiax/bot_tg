@@ -1,63 +1,68 @@
-{% extends "base.html" %}
+<div class="container py-4">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="card text-bg-primary shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title text-uppercase small mb-1">Usuarios únicos</h6>
+          <h2 class="mb-0">{{ usuarios_unicos }}</h2>
+        </div>
+      </div>
+    </div>
 
-{% block titulo %}Panel general{% endblock %}
-{% block subtitulo %}Vista rápida de usuarios, ingresos y vuelos urgentes.{% endblock %}
+    <div class="col-md-4">
+      <div class="card text-bg-success shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title text-uppercase small mb-1">Total recaudado</h6>
+          <h2 class="mb-0">${{ '%.2f'|format(total_recaudado) }} MXN</h2>
+        </div>
+      </div>
+    </div>
 
-{% block contenido %}
-<div class="cards-row">
-  <div class="stat-card glass stat-usuarios">
-    <div class="stat-icon">👥</div>
-    <div class="stat-text">
-      <div class="stat-label">Usuarios activos</div>
-      <div class="stat-value">{{ usuarios_unicos }}</div>
-      <div class="stat-foot">Con al menos una cotización</div>
+    <div class="col-md-4">
+      <div class="card text-bg-warning shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title text-uppercase small mb-1">Urgentes hoy ({{ hoy }})</h6>
+          <h2 class="mb-0">{{ urgentes|length }}</h2>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="stat-card glass stat-monto">
-    <div class="stat-icon">💰</div>
-    <div class="stat-text">
-      <div class="stat-label">Total recaudado</div>
-      <div class="stat-value">$ {{ "%.2f"|format(total_recaudado) }}</div>
-      <div class="stat-foot">Pagos confirmados y QR enviados</div>
-    </div>
-  </div>
-
-  <div class="stat-card glass stat-urgentes">
-    <div class="stat-icon">⚠️</div>
-    <div class="stat-text">
-      <div class="stat-label">Vuelos urgentes hoy</div>
-      <div class="stat-value">{{ urgentes_hoy|length }}</div>
-      <div class="stat-foot">Fecha {{ hoy }}</div>
+  <div class="row g-3 mt-4">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          Vuelos urgentes (por confirmar pago / enviar QR)
+        </div>
+        <div class="card-body p-0">
+          <table class="table mb-0 table-hover align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Usuario</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for v in urgentes %}
+              <tr>
+                <td>{{ v.id }}</td>
+                <td>@{{ v.username }}</td>
+                <td>{{ v.fecha }}</td>
+                <td>{{ v.estado }}</td>
+                <td>{{ v.monto or '-' }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center py-3">Sin vuelos urgentes para hoy.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </div>
-
-<div class="card glass" style="margin-top:16px;">
-  <h2>Vuelos urgentes del día</h2>
-  {% if urgentes_hoy %}
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Usuario</th>
-          <th>Estado</th>
-          <th>Monto</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for v in urgentes_hoy %}
-        <tr>
-          <td>{{ v.id }}</td>
-          <td>@{{ v.username }}</td>
-          <td>{{ v.estado }}</td>
-          <td>{{ v.monto or "-" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No hay vuelos urgentes para hoy.</p>
-  {% endif %}
-</div>
-{% endblock %}
