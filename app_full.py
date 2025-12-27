@@ -17,7 +17,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "bf3145e6595577f099e00638d96e4405b24bb0cd17f6908d34b065943b97dd27")
 
 # Dispatcher síncrono para manejar updates dentro de Flask
 dispatcher = Dispatcher(bot, update_queue=None, workers=0, use_context=True)
