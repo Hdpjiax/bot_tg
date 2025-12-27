@@ -16,13 +16,12 @@ from telegram.ext import (
     MessageHandler, CallbackQueryHandler, filters
 )
 
-# --- 1. SERVIDOR KEEP-ALIVE (Render) ---
+# --- 1. SERVIDOR KEEP-ALIVE ---
 app_web = Flask('')
 
 @app_web.route('/')
 def home():
     return "Sistema Vuelos Pro - Online 🚀"
-
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
@@ -35,45 +34,35 @@ ADMIN_CHAT_ID = 7721918273
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
 SOPORTE_USER = "@TuUsuarioSoporte"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 logging.basicConfig(level=logging.INFO)
 
 
-# --- 3. TECLADOS USUARIO ---
+# --- 3. TECLADOS ---
 
 def get_user_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📝 Datos de vuelo"), KeyboardButton("📸 Enviar Pago")],
-        ],
-        resize_keyboard=True,
-    )
-
-
-def get_pago_keyboard():
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("📸 Enviar Pago")],
             [KeyboardButton("🆘 Soporte")],
         ],
         resize_keyboard=True,
     )
 
 
-# --- 4. UTILIDAD: EXTRAER FECHA DEL TEXTO ---
+# --- 4. EXTRAER FECHA DEL TEXTO ---
 
 DATE_PATTERN = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
 
 def extraer_fecha(texto: str):
-    match = DATE_PATTERN.search(texto)
-    if not match:
+    m = DATE_PATTERN.search(texto)
+    if not m:
         return None
-    d, m, y = match.groups()
+    d, mth, y = m.groups()
     try:
-        dt = datetime(int(y), int(m), int(d))
+        dt = datetime(int(y), int(mth), int(d))
         return dt.date().isoformat()
     except ValueError:
         return None
@@ -83,7 +72,7 @@ def extraer_fecha(texto: str):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "✈️ Bienvenido al Sistema de Vuelos\nUsa el menú inferior para gestionar tus trámites.",
+        "✈️ Bienvenido al Sistema de Vuelos\nUsa el menú para iniciar.",
         reply_markup=get_user_keyboard(),
     )
 
@@ -93,9 +82,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
     udata = context.user_data
 
-    # SOLO USUARIO, NADA DE ADMIN AQUÍ
+    # El admin no usa el bot para gestionar, solo el dashboard
     if uid == ADMIN_CHAT_ID:
-        await update.message.reply_text("Las acciones de admin se realizan desde el dashboard web.")
+        await update.message.reply_text("El panel de administración está en la web.")
         return
 
     if texto == "📝 Datos de vuelo":
@@ -103,37 +92,40 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         udata["estado"] = "usr_esperando_datos"
         await update.message.reply_text(
             "Escribe el Origen, Destino y Fecha de tu vuelo.\n"
-            "Ejemplo: CDMX a Cancún el 25-12-2025",
-            reply_markup=get_user_keyboard(),
+            "Ejemplo: CDMX a Cancún el 25-12-2025."
         )
 
     elif texto == "📸 Enviar Pago":
         udata.clear()
         udata["estado"] = "usr_esperando_id_pago"
         await update.message.reply_text(
-            "Escribe el ID del vuelo que vas a pagar.",
-            reply_markup=get_pago_keyboard(),
+            "Escribe el ID del vuelo que vas a pagar."
         )
 
     elif texto == "🆘 Soporte":
         btn = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Contactar Soporte 💬",
-                                   url=f"https://t.me/{SOPORTE_USER.replace('@','')}")]]
+            [[InlineKeyboardButton(
+                "Contactar Soporte 💬",
+                url=f"https://t.me/{SOPORTE_USER.replace('@','')}"
+            )]]
         )
-        await update.message.reply_text("Haz clic abajo para hablar con un agente:", reply_markup=btn)
+        await update.message.reply_text(
+            "Haz clic abajo para hablar con un agente:",
+            reply_markup=btn,
+        )
 
-    # Usuario manda datos del vuelo
+    # Usuario manda descripción del vuelo
     elif udata.get("estado") == "usr_esperando_datos":
         udata["tmp_datos"] = texto
-        fecha_str = extraer_fecha(texto)
-        udata["tmp_fecha"] = fecha_str
+        fecha = extraer_fecha(texto)
+        udata["tmp_fecha"] = fecha
 
-        if fecha_str:
-            msg_fecha = f"✅ Fecha detectada: {fecha_str}"
+        if fecha:
+            msg_fecha = f"✅ Fecha detectada: {fecha}"
         else:
             msg_fecha = (
                 "⚠️ No se detectó una fecha válida. "
-                "Asegúrate de escribirla como 25-12-2025."
+                "Escribe la fecha como 25-12-2025."
             )
 
         udata["estado"] = "usr_esperando_foto_vuelo"
@@ -141,7 +133,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{msg_fecha}\nAhora envía una imagen de referencia del vuelo."
         )
 
-    # Usuario escribe ID del vuelo a pagar
+    # Usuario indica ID de vuelo a pagar
     elif udata.get("estado") == "usr_esperando_id_pago":
         v_id = texto.strip()
         res = (
@@ -153,15 +145,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not res.data:
-            await update.message.reply_text("❌ ID no encontrado. Verifica tu ID de vuelo.")
+            await update.message.reply_text("❌ ID no encontrado. Verifica tu ID.")
             return
 
         monto = res.data.get("monto")
         if not monto:
-            await update.message.reply_text("⚠️ Ese vuelo aún no está cotizado. Espera la cotización.")
+            await update.message.reply_text(
+                "⚠️ Ese vuelo aún no tiene monto. Espera a que sea cotizado."
+            )
             return
 
-        # Mostrar cuenta bancaria + monto a pagar
         udata["pago_vuelo_id"] = v_id
         udata["estado"] = "usr_esperando_comprobante"
 
@@ -174,32 +167,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Titular: Antonio Garcia\n\n"
             "Ahora envía la captura del pago como foto."
         )
-        await update.message.reply_text(texto_msj, reply_markup=get_pago_keyboard())
+        await update.message.reply_text(texto_msj)
 
     else:
         await update.message.reply_text(
-            "Selecciona una opción del teclado para continuar.",
+            "Usa el menú para continuar.",
             reply_markup=get_user_keyboard(),
         )
 
 
-# --- 6. MANEJO DE FOTOS USUARIO ---
+# --- 6. FOTOS: NUEVA COTIZACIÓN y COMPROBANTE ---
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid == ADMIN_CHAT_ID:
-        # Admin no usa bot para nada, solo dashboard
-        return
+        return  # admin no gestiona desde el bot
 
     udata = context.user_data
     if not update.message.photo:
         return
+
     fid = update.message.photo[-1].file_id
 
     # 1) Foto de referencia de la cotización
     if udata.get("estado") == "usr_esperando_foto_vuelo":
-        fecha_guardar = udata.get("tmp_fecha")
-
+        fecha = udata.get("tmp_fecha")
         res = (
             supabase.table("cotizaciones")
             .insert(
@@ -209,7 +201,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "pedido_completo": udata.get("tmp_datos"),
                     "estado": "Esperando atención",
                     "monto": None,
-                    "fecha": fecha_guardar,
+                    "fecha": fecha,
                 }
             )
             .execute()
@@ -217,14 +209,13 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         v_id = res.data[0]["id"]
 
-        # Mensaje al usuario
         await update.message.reply_text(
             f"✅ Cotización recibida.\n"
             f"ID de vuelo: {v_id}\n"
-            "Espera a que un agente la revise y te envíe el monto."
+            "Un agente revisará tu solicitud y te enviará el monto a pagar."
         )
 
-        # ENVÍO AL ADMIN COMO AVISO (solo informativo)
+        # Aviso al admin (solo informativo)
         await context.bot.send_photo(
             ADMIN_CHAT_ID,
             fid,
@@ -238,11 +229,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         udata.clear()
 
-    # 2) Comprobante de pago (NO se crea un registro nuevo)
+    # 2) Comprobante de pago (NO crea registros nuevos)
     elif udata.get("estado") == "usr_esperando_comprobante":
         v_id = udata.get("pago_vuelo_id")
 
-        # Solo cambiar estado a "Esperando confirmación de pago"
         supabase.table("cotizaciones").update(
             {"estado": "Esperando confirmación de pago"}
         ).eq("id", v_id).execute()
@@ -251,7 +241,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ Comprobante enviado. Tu pago está en revisión."
         )
 
-        # Enviar foto al admin con botón automático para confirmar
+        # Botón automático para confirmar pago desde el propio Telegram (admin)
         btn_confirmar = InlineKeyboardMarkup(
             [[InlineKeyboardButton(
                 f"Confirmar Pago ID {v_id} ✅",
@@ -274,13 +264,12 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         udata.clear()
 
 
-# --- 7. SOLO CALLBACK DEL BOTÓN CONFIRMAR PAGO (ADMIN) ---
+# --- 7. CALLBACK SOLO PARA BOTÓN DE TELEGRAM ---
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Por seguridad, solo admin puede pulsar el botón del comprobante
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
 
@@ -295,18 +284,20 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not res.data:
-            await query.message.reply_text("No se encontró el vuelo para confirmar.")
+            await query.message.reply_text("No se encontró el vuelo.")
             return
 
-        target_user = res.data[0]["user_id"]
+        user_id = res.data[0]["user_id"]
 
         await context.bot.send_message(
-            target_user,
+            user_id,
             f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
-            f"Espera la llegada de tus QRs.",
+            "Espera la llegada de tus códigos QR."
         )
 
-        await query.edit_message_caption(caption=f"✅ PAGO CONFIRMADO\nID Vuelo: {v_id}")
+        await query.edit_message_caption(
+            caption=f"✅ PAGO CONFIRMADO\nID Vuelo: {v_id}"
+        )
 
 
 # --- 8. ARRANQUE ---
