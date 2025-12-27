@@ -34,8 +34,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 7721918273
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SOPORTE_USER = "@TuUsuarioSoporte"
-
+SOPORTE_USER = "@recxs"
+print("SUPABASE_URL:", SUPABASE_URL)
+print("SUPABASE_KEY is set:", SUPABASE_KEY is not None)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 logging.basicConfig(level=logging.INFO)
 
@@ -416,3 +417,4 @@ if __name__ == "__main__":
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
     app.run_polling()
+
