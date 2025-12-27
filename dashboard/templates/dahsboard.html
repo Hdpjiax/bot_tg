@@ -1,27 +1,149 @@
-<section class="card glass">
-  <h2>Próximos vuelos (5 días)</h2>
-  {% if proximos %}
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Usuario</th>
-          <th>Fecha vuelo</th>
-          <th>Estado</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for v in proximos %}
-        <tr>
-          <td>{{ v.id }}</td>
-          <td>@{{ v.username }}</td>
-          <td>{{ v.fecha }}</td>
-          <td>{{ v.estado }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No hay vuelos próximos en el rango.</p>
-  {% endif %}
-</section>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid">
+  <!-- Pendientes de cotización -->
+  <section class="card glass">
+    <h2>Pendientes de cotización</h2>
+    {% if pendientes_cot %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Datos</th>
+            <th>Cotizar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in pendientes_cot %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha or "-" }}</td>
+            <td>{{ v.pedido_completo }}</td>
+            <td>
+              <form method="post" action="{{ url_for('cotizar') }}" class="inline-form">
+                <input type="hidden" name="id" value="{{ v.id }}">
+                <input type="number" step="0.01" name="monto" placeholder="Monto">
+                <button type="submit">Cotizar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos pendientes de cotización.</p>
+    {% endif %}
+  </section>
+
+  <!-- Pendientes de pago -->
+  <section class="card glass">
+    <h2>Pendientes de pago</h2>
+    {% if pendientes_pago %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Monto</th>
+            <th>Estado</th>
+            <th>Confirmar pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in pendientes_pago %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.monto or "-" }}</td>
+            <td>{{ v.estado }}</td>
+            <td>
+              <form method="post" action="{{ url_for('confirmar_pago') }}">
+                <input type="hidden" name="id" value="{{ v.id }}">
+                <button type="submit">Confirmar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos pendientes de pago.</p>
+    {% endif %}
+  </section>
+
+  <!-- Próximos vuelos (1–5 días) -->
+  <section class="card glass">
+    <h2>Próximos vuelos (5 días)</h2>
+    {% if proximos %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in proximos %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha }}</td>
+            <td>{{ v.estado }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay vuelos próximos en el rango.</p>
+    {% endif %}
+  </section>
+
+  <!-- Historial + envío de QRs -->
+  <section class="card glass">
+    <h2>Historial de vuelos</h2>
+    {% if historial %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Usuario</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>Enviar QRs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in historial %}
+          <tr>
+            <td>{{ v.id }}</td>
+            <td>@{{ v.username }}</td>
+            <td>{{ v.fecha or "-" }}</td>
+            <td>{{ v.estado }}</td>
+            <td>
+              {% if v.estado == "Pago Confirmado" or v.estado == "QR Enviados" %}
+              <form method="post" action="{{ url_for('enviar_qr') }}" class="inline-form">
+                <input type="hidden" name="id" value="{{ v.id }}">
+                <button type="submit">
+                  {% if v.estado == "QR Enviados" %}Reenviar instrucciones{% else %}Enviar QRs{% endif %}
+                </button>
+              </form>
+              {% else %}
+                <span style="font-size: 0.75rem; color: #a7c7b3;">Esperando pago</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No hay historial registrado.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
