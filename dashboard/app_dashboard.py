@@ -50,6 +50,7 @@ def enviar_foto(chat_id: int, fileobj, caption: str = ""):
 def general():
     hoy = datetime.utcnow().date()
     manana = hoy + timedelta(days=1)
+    pasado_manana = hoy + timedelta(days=2)
 
     res_usuarios = (
         supabase.table("cotizaciones")
@@ -67,18 +68,17 @@ def general():
     )
     total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
 
-  # urgentes hoy y mañana
+    # URGENTES: vuelos entre hoy y mañana (incluye TODO mañana)
     urgentes = (
         supabase.table("cotizaciones")
         .select("*")
         .gte("fecha", str(hoy))
-        .lte("fecha", str(manana))
-        .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
+        .lt("fecha", str(pasado_manana))   # <-- clave
         .order("fecha", desc=False)
         .order("created_at", desc=True)
         .execute()
         .data
-    )  
+    )
 
     return render_template(
         "general.html",
@@ -86,6 +86,7 @@ def general():
         total_recaudado=total_recaudado,
         urgentes=urgentes,
         hoy=hoy,
+        manana=manana
     )
 
 # ----------------- POR COTIZAR -----------------
@@ -381,7 +382,25 @@ def historial():
         .data
     )
     return render_template("historial.html", vuelos=vuelos)
+@app.route("/historial/usuario/<user_id>")
+def historial_usuario(user_id):
+    vuelos = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .eq("user_id", str(user_id))
+        .order("created_at", desc=True)
+        .limit(500)
+        .execute()
+        .data
+    )
 
+    username = vuelos[0].get("username", "SinUser") if vuelos else "SinUser"
+    return render_template(
+        "historial_usuario.html",
+        vuelos=vuelos,
+        user_id=user_id,
+        username=username
+    )
 
 # ----------------- MAIN -----------------
 

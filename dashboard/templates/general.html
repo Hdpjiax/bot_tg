@@ -17,10 +17,9 @@
     </div>
   </div>
 
-  <div class="info-card info-card--yellow">
-    <div class="info-card__label">Urgentes hoy ({{ hoy }})</div>
-    <div class="info-card__value">{{ urgentes|length }}</div>
-  </div>
+<div class="info-card info-card--yellow">
+  <div class="info-card__label">Urgentes hoy y mañana ({{ hoy }} → {{ manana }})</div>
+  <div class="info-card__value">{{ urgentes|length }}</div>
 </div>
 
 <div class="panel">
@@ -61,9 +60,9 @@
     </tbody>
   </table>
   {% else %}
-  <div class="panel__empty">
-    No hay vuelos urgentes para hoy.
-  </div>
+ <div class="panel__empty">
+  No hay vuelos urgentes entre hoy y mañana.
+</div>
   {% endif %}
 </div>
 {% endblock %}

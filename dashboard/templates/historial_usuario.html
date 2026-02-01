@@ -1,0 +1,53 @@
+historial_usuario.html{% extends "base.html" %}
+
+{% block titulo %}Vuelos de @{{ username }}{% endblock %}
+{% block subtitulo %}
+User ID: {{ user_id }} · {{ vuelos|length }} vuelo(s) ·
+<a href="{{ url_for('historial') }}">Volver al historial</a>
+{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  {% if vuelos %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fecha</th>
+          <th>Monto</th>
+          <th>Estado</th>
+          <th>Creado</th>
+          <th>Detalles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vuelos %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>{{ v.fecha or "-" }}</td>
+          <td>{{ v.monto or "-" }}</td>
+          <td>{{ v.estado }}</td>
+          <td>{{ v.created_at }}</td>
+          <td style="max-width:520px;">
+            <details>
+              <summary>Ver</summary>
+              <div style="margin-top:10px; white-space:pre-wrap; word-break:break-word;">
+                <strong>Información del vuelo:</strong><br>
+                {{ v.pedido_completo or "-" }}
+
+                <hr style="opacity:.25;">
+
+                <strong>Registro completo:</strong>
+                <pre style="white-space:pre-wrap; word-break:break-word;">{{ v|tojson(indent=2) }}</pre>
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos para este usuario.</p>
+  {% endif %}
+</div>
+{% endblock %}
