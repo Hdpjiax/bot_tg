@@ -54,6 +54,11 @@
         </form>
       </td>
     </tr>
-    {% endfor %}
-  </tbody>
-</table>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hay vuelos pendientes de cotización.</p>
+  {% endif %}
+</div>
+{% endblock %}
