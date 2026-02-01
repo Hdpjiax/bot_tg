@@ -1,5 +1,7 @@
 import os
 from datetime import datetime, timedelta
+import requests
+import json
 
 from flask import (
     Flask, render_template, request,
@@ -7,6 +9,8 @@ from flask import (
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
+
+# ----------------- CONFIG -----------------
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -18,31 +22,73 @@ bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
+
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
     return hoy, hasta
 
 
-# --- SECCIÓN GENERAL / RESUMEN ---
+def enviar_mensaje(chat_id: int, texto: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {"chat_id": chat_id, "text": texto}
+    r = requests.post(url, data=data, timeout=10)
+    r.raise_for_status()
+    
+def enviar_foto(chat_id: int, fileobj, caption: str = ""):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    files = {"photo": (fileobj.filename, fileobj.stream, fileobj.mimetype)}
+    data = {"chat_id": chat_id, "caption": caption}
+    r = requests.post(url, data=data, files=files, timeout=20)
+    r.raise_for_status()
 
+
+
+
+# ----------------- GENERAL / ESTADÍSTICAS -----------------
 @app.route("/")
 def general():
-    hoy, hasta = rango_proximos()
+    hoy = datetime.utcnow().date()
+    manana = hoy + timedelta(days=1)
 
-    vuelos = (
+    res_usuarios = (
         supabase.table("cotizaciones")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(100)
+        .select("username", count="exact", head=True)
+        .execute()
+    )
+    usuarios_unicos = res_usuarios.count or 0
+
+    res_total = (
+        supabase.table("cotizaciones")
+        .select("monto")
+        .in_("estado", ["Pago Confirmado", "QR Enviados"])
         .execute()
         .data
     )
+    total_recaudado = sum(float(r["monto"]) for r in res_total if r["monto"])
 
-    return render_template("general.html", vuelos=vuelos)
+  # urgentes hoy y mañana
+    urgentes = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .gte("fecha", str(hoy))
+        .lte("fecha", str(manana))
+        .in_("estado", ["Esperando confirmación de pago", "Pago Confirmado"])
+        .order("fecha", desc=False)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )  
 
+    return render_template(
+        "general.html",
+        usuarios_unicos=usuarios_unicos,
+        total_recaudado=total_recaudado,
+        urgentes=urgentes,
+        hoy=hoy,
+    )
 
-# --- SECCIÓN POR COTIZAR ---
+# ----------------- POR COTIZAR -----------------
 
 @app.route("/por-cotizar")
 def por_cotizar():
@@ -77,24 +123,31 @@ def accion_cotizar():
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("por_cotizar"))
 
-    user_id = res.data[0]["user_id"]
+    user_id_raw = res.data[0]["user_id"]
+    try:
+        user_id = int(user_id_raw)
+    except Exception:
+        app.logger.error(f"user_id no es entero: {user_id_raw}")
+        flash("Cotización guardada, pero user_id inválido en la base.", "error")
+        return redirect(url_for("por_cotizar"))
 
     texto = (
         f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto: {monto}\n\n"
-        "Usa el botón '📸 Enviar Pago' en el bot para subir tu comprobante."
+        f"Monto a pagar: {monto}\n\n"
+        "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)
+        enviar_mensaje(user_id, texto)
         flash("Cotización enviada y usuario notificado.", "success")
     except Exception as e:
-        flash(f"Cotización actualizada, pero error al notificar: {e}", "error")
+        app.logger.error(f"Error al enviar cotización a Telegram: {e}")
+        flash("Cotización guardada pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("por_cotizar"))
 
 
-# --- SECCIÓN VALIDAR PAGOS (Esperando confirmación) ---
+# ----------------- VALIDAR PAGOS -----------------
 
 @app.route("/validar-pagos")
 def validar_pagos():
@@ -128,7 +181,13 @@ def accion_confirmar_pago():
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("validar_pagos"))
 
-    user_id = res.data[0]["user_id"]
+    user_id_raw = res.data[0]["user_id"]
+    try:
+        user_id = int(user_id_raw)
+    except Exception:
+        app.logger.error(f"user_id no es entero: {user_id_raw}")
+        flash("Pago confirmado pero user_id inválido en la base.", "error")
+        return redirect(url_for("validar_pagos"))
 
     texto = (
         f"✅ Tu pago para el vuelo ID {v_id} ha sido confirmado.\n"
@@ -136,15 +195,15 @@ def accion_confirmar_pago():
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=texto)
+        enviar_mensaje(user_id, texto)
         flash("Pago confirmado y usuario notificado.", "success")
     except Exception as e:
-        flash(f"Pago confirmado, pero error al notificar: {e}", "error")
+        app.logger.error(f"Error al enviar notificación de pago: {e}")
+        flash("Pago confirmado pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("validar_pagos"))
 
-
-# --- SECCIÓN POR ENVIAR QR (Pago Confirmado) ---
+# ----------------- POR ENVIAR QR -----------------
 
 @app.route("/por-enviar-qr")
 def por_enviar_qr():
@@ -158,6 +217,7 @@ def por_enviar_qr():
     )
     return render_template("por_enviar_qr.html", vuelos=pendientes)
 
+# ----------------- POR ENVIAR QR -----------------
 
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
@@ -180,20 +240,17 @@ def accion_enviar_qr():
         flash("No se encontró el vuelo.", "error")
         return redirect(url_for("por_enviar_qr"))
 
-    user_id = res.data["user_id"]
+    user_id_raw = res.data["user_id"]
+    try:
+        user_id = int(user_id_raw)
+    except Exception:
+        app.logger.error(f"user_id no es entero: {user_id_raw}")
+        flash("No se pudieron enviar QRs: user_id inválido.", "error")
+        return redirect(url_for("por_enviar_qr"))
 
     if not fotos or fotos[0].filename == "":
         flash("Adjunta al menos una imagen de QR.", "error")
         return redirect(url_for("por_enviar_qr"))
-
-    media_group = []
-    for idx, f in enumerate(fotos):
-        media_group.append(
-            InputMediaPhoto(
-                f,
-                caption=f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
-            )
-        )
 
     instrucciones = (
         f"🎫 INSTRUCCIONES ID: {v_id}\n\n"
@@ -208,9 +265,14 @@ def accion_enviar_qr():
     )
 
     try:
-        bot.send_message(chat_id=user_id, text=instrucciones)
-        bot.send_media_group(chat_id=user_id, media=media_group)
-        bot.send_message(chat_id=user_id, text="🎉 Disfruta tu vuelo.")
+        enviar_mensaje(user_id, instrucciones)
+
+        # mandar cada foto una por una
+        for idx, f in enumerate(fotos):
+            caption = f"Códigos QR vuelo ID {v_id}" if idx == 0 else ""
+            enviar_foto(user_id, f, caption=caption)
+
+        enviar_mensaje(user_id, "🎉 Disfruta tu vuelo.")
 
         supabase.table("cotizaciones").update(
             {"estado": "QR Enviados"}
@@ -218,12 +280,12 @@ def accion_enviar_qr():
 
         flash("QRs enviados y estado actualizado a 'QR Enviados'.", "success")
     except Exception as e:
-        flash(f"Error al enviar QRs o actualizar estado: {e}", "error")
+        app.logger.error(f"Error al enviar QRs a Telegram: {e}")
+        flash("No se pudieron enviar los QRs al usuario.", "error")
 
     return redirect(url_for("por_enviar_qr"))
 
-
-# --- SECCIÓN PRÓXIMOS VUELOS ---
+# ----------------- PRÓXIMOS VUELOS -----------------
 
 @app.route("/proximos-vuelos")
 def proximos_vuelos():
@@ -240,7 +302,7 @@ def proximos_vuelos():
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
 
-# --- SECCIÓN HISTORIAL ---
+# ----------------- HISTORIAL -----------------
 
 @app.route("/historial")
 def historial():
@@ -254,6 +316,8 @@ def historial():
     )
     return render_template("historial.html", vuelos=vuelos)
 
+
+# ----------------- MAIN -----------------
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

@@ -9,10 +9,12 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">VUELOS<span>PRO</span></div>
+
       <div class="sidebar-section">
         <div class="sidebar-title">Panel administrativo</div>
         <nav class="sidebar-nav">
-          <a href="{{ url_for('general') }}" class="nav-link {% if request.path == url_for('general') %}active{% endif %}">
+          <a href="{{ url_for('general') }}"
+             class="nav-link {% if request.path == url_for('general') %}active{% endif %}">
             General / Estadísticas
           </a>
         </nav>
@@ -21,13 +23,16 @@
       <div class="sidebar-section">
         <div class="sidebar-title">Operaciones</div>
         <nav class="sidebar-nav">
-          <a href="{{ url_for('por_cotizar') }}" class="nav-link {% if request.path == url_for('por_cotizar') %}active{% endif %}">
+          <a href="{{ url_for('por_cotizar') }}"
+             class="nav-link {% if request.path == url_for('por_cotizar') %}active{% endif %}">
             📄 Por Cotizar
           </a>
-          <a href="{{ url_for('validar_pagos') }}" class="nav-link {% if request.path == url_for('validar_pagos') %}active{% endif %}">
+          <a href="{{ url_for('validar_pagos') }}"
+             class="nav-link {% if request.path == url_for('validar_pagos') %}active{% endif %}">
             💳 Validar Pagos
           </a>
-          <a href="{{ url_for('por_enviar_qr') }}" class="nav-link {% if request.path == url_for('por_enviar_qr') %}active{% endif %}">
+          <a href="{{ url_for('por_enviar_qr') }}"
+             class="nav-link {% if request.path == url_for('por_enviar_qr') %}active{% endif %}">
             🎫 Por Enviar QR
           </a>
         </nav>
@@ -36,10 +41,12 @@
       <div class="sidebar-section">
         <div class="sidebar-title">Monitoreo</div>
         <nav class="sidebar-nav">
-          <a href="{{ url_for('proximos_vuelos') }}" class="nav-link {% if request.path == url_for('proximos_vuelos') %}active{% endif %}">
+          <a href="{{ url_for('proximos_vuelos') }}"
+             class="nav-link {% if request.path == url_for('proximos_vuelos') %}active{% endif %}">
             🛫 Próximos vuelos
           </a>
-          <a href="{{ url_for('historial') }}" class="nav-link {% if request.path == url_for('historial') %}active{% endif %}">
+          <a href="{{ url_for('historial') }}"
+             class="nav-link {% if request.path == url_for('historial') %}active{% endif %}">
             📚 Historial
           </a>
         </nav>
@@ -69,4 +76,3 @@
   </div>
 </body>
 </html>
-
