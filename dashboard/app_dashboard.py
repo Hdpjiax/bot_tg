@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 import requests
 import json
-
+import re
 from flask import (
     Flask, render_template, request,
     redirect, url_for, flash
@@ -100,51 +100,103 @@ def por_cotizar():
         .execute()
         .data
     )
+
+    for v in pendientes:
+        v["total_vuelo"] = extraer_total_vuelo(v.get("pedido_completo", ""))
+
     return render_template("por_cotizar.html", vuelos=pendientes)
 
 
 @app.route("/accion/cotizar", methods=["POST"])
 def accion_cotizar():
-    v_id = request.form.get("id")
-    monto = request.form.get("monto")
+    v_id = (request.form.get("id") or "").strip()
+    porcentaje_raw = (request.form.get("porcentaje") or "").strip()
+    monto_raw = (request.form.get("monto") or "").strip()  # fallback
 
-    if not v_id or not monto:
-        flash("Falta ID o monto.", "error")
+    if not v_id:
+        flash("Falta ID.", "error")
         return redirect(url_for("por_cotizar"))
+
+    sel = (
+        supabase.table("cotizaciones")
+        .select("user_id, pedido_completo")
+        .eq("id", v_id)
+        .single()
+        .execute()
+    )
+
+    if not sel.data:
+        flash("No se encontró el vuelo.", "error")
+        return redirect(url_for("por_cotizar"))
+
+    pedido = sel.data.get("pedido_completo") or ""
+    total = extraer_total_vuelo(pedido)
+
+    pct = None
+    if porcentaje_raw:
+        try:
+            pct = float(porcentaje_raw)
+        except ValueError:
+            flash("Porcentaje inválido.", "error")
+            return redirect(url_for("por_cotizar"))
+
+        if pct <= 0 or pct > 100:
+            flash("El porcentaje debe estar entre 0 y 100.", "error")
+            return redirect(url_for("por_cotizar"))
+
+        if total is None:
+            flash("No se detectó el total del vuelo. Agrega el total como $1234 o captura el monto manualmente.", "error")
+            return redirect(url_for("por_cotizar"))
+
+        monto_calc = round(total * (pct / 100.0), 2)
+        monto_str = f"{monto_calc:.2f}"
+    else:
+        if not monto_raw:
+            flash("Falta porcentaje o monto.", "error")
+            return redirect(url_for("por_cotizar"))
+        monto_str = monto_raw
 
     res = (
         supabase.table("cotizaciones")
-        .update({"monto": monto, "estado": "Cotizado"})
+        .update({"monto": monto_str, "estado": "Cotizado"})
         .eq("id", v_id)
         .execute()
     )
 
     if not res.data:
-        flash("No se encontró el vuelo.", "error")
+        flash("No se pudo actualizar el vuelo.", "error")
         return redirect(url_for("por_cotizar"))
 
-    user_id_raw = res.data[0]["user_id"]
+    user_id_raw = sel.data.get("user_id")
     try:
         user_id = int(user_id_raw)
     except Exception:
-        app.logger.error(f"user_id no es entero: {user_id_raw}")
         flash("Cotización guardada, pero user_id inválido en la base.", "error")
         return redirect(url_for("por_cotizar"))
 
-    texto = (
-        f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
-        f"Monto a pagar: {monto}\n\n"
-        "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
-    )
+    if pct is not None and total is not None:
+        texto = (
+            f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
+            f"Total del vuelo: ${total:.2f}\n"
+            f"Porcentaje a pagar: {pct:.2f}%\n"
+            f"Monto a pagar: ${monto_str}\n\n"
+            "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
+        )
+    else:
+        texto = (
+            f"💰 Tu vuelo ID {v_id} ha sido cotizado.\n"
+            f"Monto a pagar: {monto_str}\n\n"
+            "Cuando tengas tu comprobante usa el botón \"📸 Enviar Pago\" en el bot."
+        )
 
     try:
         enviar_mensaje(user_id, texto)
         flash("Cotización enviada y usuario notificado.", "success")
-    except Exception as e:
-        app.logger.error(f"Error al enviar cotización a Telegram: {e}")
+    except Exception:
         flash("Cotización guardada pero no se pudo notificar al usuario.", "error")
 
     return redirect(url_for("por_cotizar"))
+
 
 
 # ----------------- VALIDAR PAGOS -----------------
@@ -301,7 +353,21 @@ def proximos_vuelos():
     )
     return render_template("proximos_vuelos.html", vuelos=proximos)
 
+_MONEY_RE = re.compile(r"(?:\$|MXN\s*)\s*([0-9][0-9.,]*)", re.IGNORECASE)
 
+def extraer_total_vuelo(texto: str):
+    """Extrae el total desde pedido_completo. Busca el último monto tipo $5633 o MXN 5,633.50."""
+    if not texto:
+        return None
+    matches = _MONEY_RE.findall(texto)
+    if not matches:
+        return None
+    raw = matches[-1].replace(",", "").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+    
 # ----------------- HISTORIAL -----------------
 
 @app.route("/historial")
