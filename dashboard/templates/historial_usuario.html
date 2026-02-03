@@ -1,9 +1,8 @@
-historial_usuario.html{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block titulo %}Vuelos de @{{ username }}{% endblock %}
 {% block subtitulo %}
-User ID: {{ user_id }} · {{ vuelos|length }} vuelo(s) ·
-<a href="{{ url_for('historial') }}">Volver al historial</a>
+User ID: {{ user_id }} · {{ vuelos|length }} vuelo(s) · <a class="link-soft" href="{{ url_for('historial') }}">Volver al historial</a>
 {% endblock %}
 
 {% block contenido %}
@@ -23,22 +22,19 @@ User ID: {{ user_id }} · {{ vuelos|length }} vuelo(s) ·
       <tbody>
         {% for v in vuelos %}
         <tr>
-          <td>{{ v.id }}</td>
+          <td><a class="link-soft" href="{{ url_for('vuelo_detalle', vuelo_id=v.id) }}">#{{ v.id }}</a></td>
           <td>{{ v.fecha or "-" }}</td>
           <td>{{ v.monto or "-" }}</td>
           <td>{{ v.estado }}</td>
           <td>{{ v.created_at }}</td>
-          <td style="max-width:520px;">
-            <details>
+          <td style="max-width: 540px;">
+            <details class="details-box">
               <summary>Ver</summary>
-              <div style="margin-top:10px; white-space:pre-wrap; word-break:break-word;">
-                <strong>Información del vuelo:</strong><br>
-                {{ v.pedido_completo or "-" }}
-
-                <hr style="opacity:.25;">
-
-                <strong>Registro completo:</strong>
-                <pre style="white-space:pre-wrap; word-break:break-word;">{{ v|tojson(indent=2) }}</pre>
+              <div class="details-body">
+                <div class="details-title">Información del vuelo</div>
+                <div class="details-text">{{ v.pedido_completo or "-" }}</div>
+                <div class="details-title">Registro completo</div>
+                <pre class="details-json">{{ v|tojson(indent=2) }}</pre>
               </div>
             </details>
           </td>

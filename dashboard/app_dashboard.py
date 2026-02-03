@@ -86,7 +86,7 @@ def general():
         total_recaudado=total_recaudado,
         urgentes=urgentes,
         hoy=hoy,
-        manana=manana
+        manana=manana,
     )
 
 # ----------------- POR COTIZAR -----------------
@@ -382,6 +382,8 @@ def historial():
         .data
     )
     return render_template("historial.html", vuelos=vuelos)
+
+#historial por usuario
 @app.route("/historial/usuario/<user_id>")
 def historial_usuario(user_id):
     vuelos = (
@@ -401,7 +403,46 @@ def historial_usuario(user_id):
         user_id=user_id,
         username=username
     )
+@app.route("/vuelo/<vuelo_id>")
+def vuelo_detalle(vuelo_id):
+    """Detalle completo de un vuelo por ID."""
+    try:
+        res = (
+            supabase.table("cotizaciones")
+            .select("*")
+            .eq("id", vuelo_id)
+            .single()
+            .execute()
+        )
+    except Exception as e:
+        app.logger.error(f"Error al cargar vuelo {vuelo_id}: {e}")
+        flash("No se pudo cargar el detalle del vuelo.", "error")
+        return redirect(url_for("historial"))
 
+    v = res.data
+    if not v:
+        flash("Vuelo no encontrado.", "error")
+        return redirect(url_for("historial"))
+
+    total_vuelo = extraer_total_vuelo(v.get("pedido_completo", "") or "")
+
+    monto_val = None
+    try:
+        if v.get("monto") not in (None, ""):
+            monto_val = float(v.get("monto"))
+    except Exception:
+        monto_val = None
+
+    porcentaje = None
+    if total_vuelo and monto_val is not None and total_vuelo > 0:
+        porcentaje = round((monto_val / total_vuelo) * 100.0, 2)
+
+    return render_template(
+        "vuelo_detalle.html",
+        v=v,
+        total_vuelo=total_vuelo,
+        porcentaje=porcentaje,
+    )
 # ----------------- MAIN -----------------
 
 if __name__ == "__main__":

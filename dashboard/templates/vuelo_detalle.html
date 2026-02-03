@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block titulo %}Detalle del vuelo #{{ v.id }}{% endblock %}
+{% block subtitulo %}
+<a class="user-link" href="{{ url_for('historial_usuario', user_id=v.user_id) }}">@{{ v.username }}</a>
+<span class="sep">·</span>
+Estado: <span class="badge">{{ v.estado }}</span>
+<span class="sep">·</span>
+<a class="link-soft" href="{{ url_for('historial') }}">Volver al historial</a>
+{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  <div class="detail-grid">
+    <div class="detail-item">
+      <div class="detail-label">User ID</div>
+      <div class="detail-value">{{ v.user_id }}</div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-label">Fecha del vuelo</div>
+      <div class="detail-value">{{ v.fecha or '-' }}</div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-label">Monto</div>
+      <div class="detail-value">{{ v.monto or '-' }}</div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-label">Total detectado</div>
+      <div class="detail-value">
+        {% if total_vuelo %}
+          ${{ '%.2f'|format(total_vuelo) }} MXN
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-label">Porcentaje estimado</div>
+      <div class="detail-value">
+        {% if porcentaje is not none %}
+          {{ '%.2f'|format(porcentaje) }}%
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-label">Creado</div>
+      <div class="detail-value">{{ v.created_at }}</div>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section__title">Información del vuelo</div>
+    <div class="detail-text">{{ v.pedido_completo or '-' }}</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section__title">Registro completo</div>
+    <pre class="details-json">{{ v|tojson(indent=2) }}</pre>
+  </div>
+
+  <div class="detail-actions">
+    <a class="btn btn-sm" href="{{ url_for('historial_usuario', user_id=v.user_id) }}">Ver todos los vuelos del usuario</a>
+    <a class="btn-secondary" href="{{ url_for('historial') }}">Volver</a>
+  </div>
+</div>
+{% endblock %}

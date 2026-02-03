@@ -246,11 +246,17 @@ a {
   text-decoration: none;
 }
 
-/* Solo subraya links dentro del contenido (no afecta el sidebar) */
 .content a:hover {
   text-decoration: underline;
 }
 
+.content a.btn:hover,
+.content a.user-link:hover,
+.content a.btn-secondary:hover {
+  text-decoration: none;
+}
+
+/* Link de usuario tipo "pill" */
 .user-link {
   display: inline-flex;
   align-items: center;
@@ -271,13 +277,20 @@ a {
 }
 
 .user-link:hover {
-  text-decoration: none;
   transform: translateY(-1px);
   background: rgba(34, 197, 94, 0.20);
   border-color: rgba(34, 197, 94, 0.45);
 }
 
-/* Panel ancho para “Vuelos urgentes” */
+/* Link suave para IDs */
+.link-soft {
+  color: #a5f3fc;
+}
+.link-soft:hover {
+  text-decoration: underline;
+}
+
+/* Panel ancho (vuelos urgentes ampliado) */
 .panel--wide {
   padding: 18px 20px;
   margin-top: 10px;
@@ -292,6 +305,166 @@ a {
 .table-wrap table {
   margin-top: 0;
   min-width: 760px;
+}
+
+/* Texto truncado con tooltip */
+.text-truncate {
+  display: inline-block;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Botones tipo <a> */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #022c22;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
+  background: var(--accent-strong);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+.btn-secondary {
+  border-radius: 999px;
+  padding: 6px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: transparent;
+  color: var(--text-main);
+}
+
+.btn-secondary:hover {
+  background: rgba(15, 23, 42, 0.7);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+/* Detalles (historial_usuario) */
+.details-box summary {
+  cursor: pointer;
+  color: #a5f3fc;
+  font-weight: 600;
+}
+
+.details-body {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.details-title {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 10px 0 6px;
+}
+
+.details-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.details-json {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+/* Vista detalle */
+.sep {
+  margin: 0 8px;
+  opacity: 0.7;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 980px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .text-truncate {
+    max-width: 280px;
+  }
+}
+
+.detail-item {
+  padding: 12px 12px;
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.detail-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.detail-value {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.detail-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.detail-section__title {
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.detail-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 /* Mensajes flash */

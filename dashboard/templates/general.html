@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block titulo %}General / Estadísticas{% endblock %}
-{% block subtitulo %}Resumen de usuarios, recaudación y vuelos urgentes del día.{% endblock %}
+{% block subtitulo %}Resumen de usuarios, recaudación y vuelos urgentes (hoy y mañana).{% endblock %}
 
 {% block contenido %}
 <div class="cards-row">
@@ -17,16 +17,19 @@
     </div>
   </div>
 
-<div class="info-card info-card--yellow">
-  <div class="info-card__label">Urgentes hoy y mañana ({{ hoy }} → {{ manana }})</div>
-  <div class="info-card__value">{{ urgentes|length }}</div>
+  <div class="info-card info-card--yellow">
+    <div class="info-card__label">Urgentes hoy y mañana ({{ hoy }} — {{ manana }})</div>
+    <div class="info-card__value">{{ urgentes|length }}</div>
+  </div>
 </div>
 
 <div class="panel panel--wide">
   <div class="panel__header">
     <div>
       <h2 class="panel__title">Vuelos urgentes</h2>
-      <p class="panel__subtitle">Vuelos con fecha entre hoy y mañana. (Sección ampliada)</p>
+      <p class="panel__subtitle">
+        Vuelos con fecha entre hoy y mañana. (Sección ampliada)
+      </p>
     </div>
   </div>
 
@@ -40,7 +43,9 @@
           <th>Fecha</th>
           <th>Estado</th>
           <th>Monto</th>
+          <th>Información</th>
           <th>Creado</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
@@ -52,17 +57,33 @@
               @{{ v.username }}
             </a>
           </td>
-          <td>{{ v.fecha or "-" }}</td>
+          <td>
+            {% if v.fecha %}
+              {{ v.fecha[:10].split('-')[2] }}-{{ v.fecha[:10].split('-')[1] }}-{{ v.fecha[:10].split('-')[0] }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
           <td>{{ v.estado }}</td>
-          <td>{{ v.monto or "-" }}</td>
+          <td>{{ v.monto or '-' }}</td>
+          <td>
+            <span class="text-truncate" title="{{ v.pedido_completo or '' }}">
+              {{ (v.pedido_completo or '-')|truncate(90, True, '…') }}
+            </span>
+          </td>
           <td>{{ v.created_at }}</td>
+          <td>
+            <a class="btn btn-sm" href="{{ url_for('vuelo_detalle', vuelo_id=v.id) }}">Ver detalle</a>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <div class="panel__empty">No hay vuelos urgentes entre hoy y mañana.</div>
+  <div class="panel__empty">
+    No hay vuelos urgentes entre hoy y mañana.
+  </div>
   {% endif %}
 </div>
 {% endblock %}
