@@ -22,47 +22,47 @@
   <div class="info-card__value">{{ urgentes|length }}</div>
 </div>
 
-<div class="panel">
+<div class="panel panel--wide">
   <div class="panel__header">
     <div>
       <h2 class="panel__title">Vuelos urgentes</h2>
-      <p class="panel__subtitle">
-        Vuelos con estado “Esperando confirmación de pago” o “Pago Confirmado” para hoy.
-      </p>
+      <p class="panel__subtitle">Vuelos con fecha entre hoy y mañana. (Sección ampliada)</p>
     </div>
   </div>
 
   {% if urgentes %}
-  <table class="table table--compact">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Usuario</th>
-        <th>Fecha</th>
-        <th>Estado</th>
-        <th>Monto</th>
-        <th>Creado</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for v in urgentes %}
-      <tr>
-        <td>{{ v.id }}</td>
-        <td>@{{ v.username }}</td>
-        <td>
-        {{ v.fecha[:10].split('-')[2] }}-{{ v.fecha[:10].split('-')[1] }}-{{ v.fecha[:10].split('-')[0] }}
-        </td>
-        <td>{{ v.estado }}</td>
-        <td>{{ v.monto or '-' }}</td>
-        <td>{{ v.created_at }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Estado</th>
+          <th>Monto</th>
+          <th>Creado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in urgentes %}
+        <tr>
+          <td>{{ v.id }}</td>
+          <td>
+            <a class="user-link" href="{{ url_for('historial_usuario', user_id=v.user_id) }}">
+              @{{ v.username }}
+            </a>
+          </td>
+          <td>{{ v.fecha or "-" }}</td>
+          <td>{{ v.estado }}</td>
+          <td>{{ v.monto or "-" }}</td>
+          <td>{{ v.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
- <div class="panel__empty">
-  No hay vuelos urgentes entre hoy y mañana.
-</div>
+  <div class="panel__empty">No hay vuelos urgentes entre hoy y mañana.</div>
   {% endif %}
 </div>
 {% endblock %}

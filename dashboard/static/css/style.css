@@ -240,6 +240,59 @@ button:hover {
   font-size: 0.85rem;
   text-decoration: underline;
 }
+/* Links dentro de tablas (usuario, etc.) */
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* Solo subraya links dentro del contenido (no afecta el sidebar) */
+.content a:hover {
+  text-decoration: underline;
+}
+
+.user-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  color: var(--text-main);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.user-link:visited {
+  color: var(--text-main);
+}
+
+.user-link:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+  background: rgba(34, 197, 94, 0.20);
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+/* Panel ancho para “Vuelos urgentes” */
+.panel--wide {
+  padding: 18px 20px;
+  margin-top: 10px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.table-wrap table {
+  margin-top: 0;
+  min-width: 760px;
+}
 
 /* Mensajes flash */
 .flash-container {

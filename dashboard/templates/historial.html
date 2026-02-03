@@ -20,8 +20,8 @@
         {% for v in vuelos %}
         <tr>
           <td>{{ v.id }}</td>
-          <td>
-  <a href="{{ url_for('historial_usuario', user_id=v.user_id) }}">
+  <td>
+  <a class="user-link" href="{{ url_for('historial_usuario', user_id=v.user_id) }}">
     @{{ v.username }}
   </a>
 </td>
