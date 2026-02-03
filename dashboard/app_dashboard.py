@@ -5,7 +5,7 @@ import json
 import re
 from flask import (
     Flask, render_template, request,
-    redirect, url_for, flash
+    redirect, url_for, flash, jsonify
 )
 from supabase import create_client, Client
 from telegram import Bot, InputMediaPhoto
@@ -22,7 +22,21 @@ bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia_esto")
 
-
+def construir_info_vuelo(v: dict) -> str:
+    """Texto base para importar dentro del textarea."""
+    pedido = (v.get("pedido_completo") or "").strip()
+    return (
+        "=== INFO DEL VUELO (NO BORRAR) ===\n"
+        f"ID: {v.get('id')}\n"
+        f"Usuario: @{v.get('username')} (user_id: {v.get('user_id')})\n"
+        f"Fecha: {v.get('fecha')}\n"
+        f"Estado: {v.get('estado')}\n"
+        f"Monto: {v.get('monto')}\n"
+        "Pedido:\n"
+        f"{pedido}\n"
+        "\n"
+        "=== NOTAS ===\n"
+    )
 def rango_proximos():
     hoy = datetime.utcnow().date()
     hasta = hoy + timedelta(days=5)
@@ -269,8 +283,88 @@ def por_enviar_qr():
         .data
     )
     return render_template("por_enviar_qr.html", vuelos=pendientes)
+#----------- ESPACIO DE TRABAJO --------------
+@app.route("/workspace")
+def workspace():
+    # Puedes cambiar el filtro según lo que quieras revisar
+    vuelos = (
+        supabase.table("cotizaciones")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(150)
+        .execute()
+        .data
+    )
 
-# ----------------- POR ENVIAR QR -----------------
+    ids = [v.get("id") for v in vuelos if v.get("id") is not None]
+    work_map = {}
+
+    if ids:
+        ws = (
+            supabase.table("workspace")
+            .select("*")
+            .in_("cotizacion_id", ids)
+            .execute()
+            .data
+        )
+        work_map = {str(w["cotizacion_id"]): w for w in ws}
+
+    return render_template("workspace.html", vuelos=vuelos, work_map=work_map)
+#END ESPACIO DE TRABAJO ------------
+
+
+#---------------- END POINT PARA OBTENER DATOS DE WORKSPACE --------------
+@app.route("/workspace/obtener/<int:vuelo_id>")
+def workspace_obtener(vuelo_id):
+    res = (
+        supabase.table("workspace")
+        .select("*")
+        .eq("cotizacion_id", vuelo_id)
+        .execute()
+        .data
+    )
+    item = res[0] if res else None
+    return jsonify({"ok": True, "item": item})
+#---------------- END POINT PARA OBTENER DATOS DE WORKSPACE --------------
+
+
+
+
+# ------------- END POINT PARA GUARDAR DATOS DE WORKSPACE --------------
+@app.route("/workspace/guardar", methods=["POST"])
+def workspace_guardar():
+    permitido = {"declinado", "ban", "aprobado", "riesgoso"}
+
+    cotizacion_id = (request.form.get("cotizacion_id") or "").strip()
+    etiqueta = (request.form.get("etiqueta") or "").strip().lower()
+    notas = (request.form.get("notas") or "").strip()
+
+    user_id = (request.form.get("user_id") or "").strip()
+    username = (request.form.get("username") or "").strip()
+
+    if not cotizacion_id.isdigit():
+        return jsonify({"ok": False, "error": "ID inválido"}), 400
+
+    if etiqueta not in permitido:
+        return jsonify({"ok": False, "error": "Etiqueta inválida"}), 400
+
+    data = {
+        "cotizacion_id": int(cotizacion_id),
+        "user_id": user_id,
+        "username": username,
+        "etiqueta": etiqueta,
+        "notas": notas,
+    }
+
+    try:
+        supabase.table("workspace").upsert(data, on_conflict="cotizacion_id").execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        app.logger.error(f"workspace_guardar error: {e}")
+        return jsonify({"ok": False, "error": "No se pudo guardar"}), 500
+# ------------- END POINT PARA GUARDAR DATOS DE WORKSPACE --------------
+
+#------- ---------------- ENVIAR QRS -----------------
 
 @app.route("/accion/enviar_qr", methods=["POST"])
 def accion_enviar_qr():
@@ -337,6 +431,9 @@ def accion_enviar_qr():
         flash("No se pudieron enviar los QRs al usuario.", "error")
 
     return redirect(url_for("por_enviar_qr"))
+# ----------------- PARA ENVIAR QRS --------------
+
+
 
 # ----------------- PRÓXIMOS VUELOS -----------------
 

@@ -39,16 +39,11 @@
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-title">Monitoreo</div>
+        <div class="sidebar-title">Espacio de trabajo
+        </div>
         <nav class="sidebar-nav">
-          <a href="{{ url_for('proximos_vuelos') }}"
-             class="nav-link {% if request.path == url_for('proximos_vuelos') %}active{% endif %}">
-            🛫 Próximos vuelos
-          </a>
-          <a href="{{ url_for('historial') }}"
-             class="nav-link {% if request.path == url_for('historial') %}active{% endif %}">
-            📚 Historial
-          </a>
+          <a class="nav-link" href="{{ url_for('workspace') }}">🧠 Espacio de trabajo</a>
+
         </nav>
       </div>
     </aside>
@@ -74,5 +69,6 @@
       </section>
     </main>
   </div>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

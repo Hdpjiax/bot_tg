@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block titulo %}Espacio de trabajo{% endblock %}
+{% block subtitulo %}
+Notas internas con etiquetas: declinado | ban | aprobado | riesgoso.
+{% endblock %}
+
+{% block contenido %}
+<div class="card glass">
+  <div class="workspace-header">
+    <div class="workspace-title">Vuelos recientes</div>
+    <div class="workspace-help">Abre un vuelo y guarda tu análisis con etiqueta.</div>
+  </div>
+
+  {% if vuelos %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Fecha</th>
+          <th>Estado</th>
+          <th>Etiqueta</th>
+          <th>Actualizado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for v in vuelos %}
+          {% set w = work_map.get(v.id|string) %}
+          <tr>
+            <td>#{{ v.id }}</td>
+            <td>
+              <span class="user-pill">@{{ v.username }}</span>
+              <span class="muted">({{ v.user_id }})</span>
+            </td>
+            <td>{{ v.fecha or "-" }}</td>
+            <td>{{ v.estado }}</td>
+
+            <td>
+              {% if w %}
+                <span class="tag tag-{{ w.etiqueta }}">{{ w.etiqueta }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if w and w.updated_at %}
+                {{ w.updated_at }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              <button
+                type="button"
+                class="btn btn-sm"
+                data-open-work="1"
+                data-id="{{ v.id }}"
+                data-user-id="{{ v.user_id }}"
+                data-username="{{ v.username }}"
+                data-fecha="{{ v.fecha or '' }}"
+                data-estado="{{ v.estado or '' }}"
+                data-monto="{{ v.monto or '' }}"
+                data-pedido="{{ (v.pedido_completo or '')|e }}"
+              >
+                Abrir
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p>No hay vuelos para mostrar.</p>
+  {% endif %}
+</div>
+
+<!-- MODAL -->
+<div class="modal-backdrop" id="workBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="workTitle">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="workTitle">Espacio de trabajo</div>
+        <div class="modal-sub" id="workSub">—</div>
+      </div>
+      <button class="icon-btn" type="button" id="workClose">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="row">
+        <label class="label">Etiqueta</label>
+        <select class="select" id="workTag">
+          <option value="aprobado">aprobado</option>
+          <option value="riesgoso">riesgoso</option>
+          <option value="declinado">declinado</option>
+          <option value="ban">ban</option>
+        </select>
+
+        <button class="btn-secondary btn-sm" type="button" id="workImport">
+          Importar info del vuelo
+        </button>
+      </div>
+
+      <label class="label" style="margin-top:12px;">Texto / análisis</label>
+      <textarea class="textarea" id="workNotes" rows="14" placeholder="Escribe aquí..."></textarea>
+
+      <div class="hint">
+        Tip: escribe tus notas debajo de <b>=== NOTAS ===</b>. El botón “Importar” vuelve a colocar la info del vuelo arriba.
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="status" id="workStatus"></div>
+      <button class="btn-secondary" type="button" id="workCancel">Cancelar</button>
+      <button class="btn" type="button" id="workSave">Guardar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const backdrop = document.getElementById("workBackdrop");
+  const btnClose = document.getElementById("workClose");
+  const btnCancel = document.getElementById("workCancel");
+  const btnSave = document.getElementById("workSave");
+  const btnImport = document.getElementById("workImport");
+
+  const elSub = document.getElementById("workSub");
+  const elTag = document.getElementById("workTag");
+  const elNotes = document.getElementById("workNotes");
+  const elStatus = document.getElementById("workStatus");
+
+  let current = null; // vuelo actual
+
+  function openModal(v) {
+    current = v;
+    elStatus.textContent = "";
+    elSub.textContent = `#${v.id} · @${v.username} · ${v.fecha || "-"} · ${v.estado || "-"}`;
+
+    // Primero cargamos lo guardado (si existe)
+    fetch(`/workspace/obtener/${v.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.item) {
+          elTag.value = data.item.etiqueta || "aprobado";
+          elNotes.value = data.item.notas || "";
+        } else {
+          elTag.value = "aprobado";
+          elNotes.value = buildInfo(v);
+        }
+      })
+      .catch(() => {
+        elTag.value = "aprobado";
+        elNotes.value = buildInfo(v);
+      });
+
+    backdrop.classList.add("show");
+    backdrop.setAttribute("aria-hidden", "false");
+  }
+
+  function closeModal() {
+    backdrop.classList.remove("show");
+    backdrop.setAttribute("aria-hidden", "true");
+    current = null;
+  }
+
+  function buildInfo(v) {
+    const pedido = (v.pedido || "").trim();
+    return (
+`=== INFO DEL VUELO (NO BORRAR) ===
+ID: ${v.id}
+Usuario: @${v.username} (user_id: ${v.user_id})
+Fecha: ${v.fecha || "-"}
+Estado: ${v.estado || "-"}
+Monto: ${v.monto || "-"}
+Pedido:
+${pedido}
+
+=== NOTAS ===
+`
+    );
+  }
+
+  function importarInfo() {
+    if (!current) return;
+
+    const txt = elNotes.value || "";
+    const marker = "=== NOTAS ===";
+    const idx = txt.indexOf(marker);
+
+    let notasPrevias = "";
+    if (idx !== -1) {
+      // conserva lo que esté debajo del marcador
+      notasPrevias = txt.slice(idx + marker.length).trimStart();
+    }
+
+    elNotes.value = buildInfo(current) + (notasPrevias ? notasPrevias : "");
+  }
+
+  async function guardar() {
+    if (!current) return;
+    elStatus.textContent = "Guardando...";
+
+    const form = new FormData();
+    form.append("cotizacion_id", current.id);
+    form.append("user_id", current.user_id);
+    form.append("username", current.username);
+    form.append("etiqueta", elTag.value);
+    form.append("notas", elNotes.value);
+
+    try {
+      const res = await fetch("/workspace/guardar", { method: "POST", body: form });
+      const data = await res.json();
+
+      if (!data.ok) {
+        elStatus.textContent = data.error || "Error al guardar";
+        return;
+      }
+
+      elStatus.textContent = "✅ Guardado";
+      setTimeout(() => window.location.reload(), 400);
+    } catch (e) {
+      elStatus.textContent = "Error de red al guardar";
+    }
+  }
+
+  // Abrir desde botones
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-open-work='1']");
+    if (!btn) return;
+
+    const v = {
+      id: btn.dataset.id,
+      user_id: btn.dataset.userId,
+      username: btn.dataset.username,
+      fecha: btn.dataset.fecha,
+      estado: btn.dataset.estado,
+      monto: btn.dataset.monto,
+      pedido: btn.dataset.pedido
+    };
+
+    openModal(v);
+  });
+
+  btnClose.addEventListener("click", closeModal);
+  btnCancel.addEventListener("click", closeModal);
+
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) closeModal();
+  });
+
+  btnImport.addEventListener("click", importarInfo);
+  btnSave.addEventListener("click", guardar);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeModal();
+  });
+})();
+</script>
+{% endblock %}
